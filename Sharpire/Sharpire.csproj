@@ -71,7 +71,6 @@
     <Compile Include="Empire.Agent.Jobs.cs" />
     <Compile Include="Empire.Agent.Stager.cs" />
     <Compile Include="Misc.cs" />
-    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

