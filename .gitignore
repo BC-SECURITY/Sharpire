@@ -346,3 +346,4 @@ MigrationBackup/
 # Ignore bin and obj directories
 **/bin/
 **/obj/
+/Sharpire/.idea/.idea.Sharpire/.idea
