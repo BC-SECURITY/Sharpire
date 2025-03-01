@@ -804,11 +804,9 @@ namespace Sharpire
         public void SetAgentID(string AgentID) { this.AgentID = AgentID; }
         public string GetAgentID() { return AgentID; }
 
-        public void SetSessionKey(string SessionKey)
-        {
-            this.SessionKey = SessionKey;
-            SessionKeyBytes = System.Text.Encoding.ASCII.GetBytes(SessionKey);
-        }
+        public void SetSessionKey(string SessionKey) { this.SessionKey = SessionKey; }
+        
+        public byte[] SetSessionKeyBytes(byte[] SessionKeyBytes) { return this.SessionKeyBytes = SessionKeyBytes; }
         public string GetSessionKey() { return SessionKey; }
         public byte[] GetSessionKeyBytes() { return SessionKeyBytes; }
     }

