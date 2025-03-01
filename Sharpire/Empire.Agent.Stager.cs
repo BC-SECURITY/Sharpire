@@ -253,7 +253,7 @@ namespace Sharpire
                         Console.WriteLine("Empire Failure");
 #endif
                         GC.Collect();
-                       // Execute();
+                        Execute();
                     }
                 }
                 catch
@@ -269,7 +269,7 @@ namespace Sharpire
                 if ((int)((HttpWebResponse)webError.Response).StatusCode == 500)
                 {
                     GC.Collect();
-                   // Execute();
+                    Execute();
                 }
                 else
                 {

