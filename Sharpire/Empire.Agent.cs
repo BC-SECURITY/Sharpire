@@ -1,8 +1,4 @@
-﻿// Original Author: 0xbadjuju (https://github.com/0xbadjuju/Sharpire)
-// Updated and Modified by: Jake Krasnov (@_Hubbl3)
-// Project: Empire (https://github.com/BC-SECURITY/Empire)
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -232,7 +228,6 @@ namespace Sharpire
                 }
                 else if (command == "mv" || command == "move")
                 {
-                    Console.WriteLine(arguments);
                     string[] parts = arguments.Split(' ');
                     if (2 != parts.Length)
                         return "Invalid mv|move command";
@@ -632,7 +627,6 @@ namespace Sharpire
         public SessionInfo(string[] args)
         {
             ControlServers = args[0].Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-            Console.WriteLine(args[1]);
             StagingKey = args[1];
             AgentLanguage = args[2];
 
@@ -694,8 +688,8 @@ namespace Sharpire
 
         public void setProfile(string profile)
         {
-            this.TaskURIs = profile.Split('|').First().Split(',');
-            this.UserAgent = profile.Split('|').Last();
+            TaskURIs = profile.Split('|').First().Split(',');
+            UserAgent = profile.Split('|').Last();
         }
         
         public void SetKillDate(string KillDate)
