@@ -98,8 +98,7 @@ namespace Sharpire
             return randomInt;
         }
     }
-
-
+    
     class EmpireStager
     {
         private SessionInfo sessionInfo;
@@ -117,10 +116,7 @@ namespace Sharpire
             public byte[] Extra { get; set; }
             public uint PacketLength { get; set; }
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        //
-        ////////////////////////////////////////////////////////////////////////////////
+        
         public EmpireStager(SessionInfo sessionInfo1)
         {
             sessionInfo = sessionInfo1;
