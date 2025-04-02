@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Text;
 using System.Threading;
-using System.IO;
 
 namespace Sharpire
 {
@@ -13,7 +11,6 @@ namespace Sharpire
     {
         public Dictionary<string, Job> jobs;
         public Dictionary<string, ushort> jobsId;
-        public byte[] ImportedScript { get; set; }
 
         public JobTracking()
         {
