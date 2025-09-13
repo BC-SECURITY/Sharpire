@@ -623,6 +623,8 @@ namespace Sharpire
         private string AgentID;
         private string SessionKey;
         private byte[] SessionKeyBytes;
+        private byte[] PublicKeyBytes;
+        private byte[] PrivateKeyBytes;
 
         public SessionInfo(string[] args)
         {
@@ -636,6 +638,8 @@ namespace Sharpire
             StagerURI = "";
             Proxy = "default";
             ProxyCreds = "";
+            PublicKeyBytes = "";
+
         }
 
         public string[] GetControlServers() { return ControlServers; }
@@ -645,6 +649,19 @@ namespace Sharpire
         public string[] GetTaskUrIs() { return TaskURIs; }
         public string GetUserAgent() { return UserAgent; }
         public double GetDefaultJitter() { return DefaultJitter; }
+
+        public byte[] GetPublicKeyBytes() { return PublicKeyBytes; }
+        public byte[] GetPrivateKeyBytes() { return PrivateKeyBytes; }
+
+        public void SetPublicKeyBytes(byte[] Pkbytes)
+        {
+            PublicKeyBytes = Pkbytes;
+        }
+
+        public void SetPrivateKeyBytes(byte[] Skbytes)
+        {
+            PrivateKeyBytes = Skbytes;
+        }
         public void SetDefaultJitter(double defaultJitter)
         {
             DefaultJitter = defaultJitter;
