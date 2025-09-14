@@ -638,7 +638,7 @@ namespace Sharpire
             StagerURI = "";
             Proxy = "default";
             ProxyCreds = "";
-            PublicKeyBytes = "";
+           
 
         }
 
