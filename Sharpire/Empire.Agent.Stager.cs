@@ -297,14 +297,14 @@ namespace Sharpire
             DiffieHellman dh = new DiffieHellman(); // Step 1: Create DH key pair
             byte[] publicKeyBytes = dh.PublicKeyBytes;
             var publicKeyBytesBE = Cert.ToBigEndianFixedFromLE(publicKeyBytes, 768);
-            Console.WriteLine("public bytes length: " + publicKeyBytesBE.Length);
+            
             byte[] msg = System.Text.Encoding.ASCII.GetBytes("SIGNATURE");
             var agent_cert = Cert.signature_unsafe(msg, sessionInfo.GetPrivateKeyBytes(), sessionInfo.GetPublicKeyBytes());
 
             byte[] stage1Msg = new byte[publicKeyBytesBE.Length + agent_cert.Length];
             Array.Copy(publicKeyBytesBE, 0, stage1Msg, 0, publicKeyBytesBE.Length);
             Array.Copy(agent_cert, 0, stage1Msg, publicKeyBytesBE.Length, agent_cert.Length);
-            Console.WriteLine("stage1 message Length: " + stage1Msg.Length);
+            
 
             byte[] hmacData = AesEncryptThenHmac(stagingKeyBytes, stage1Msg);
 
