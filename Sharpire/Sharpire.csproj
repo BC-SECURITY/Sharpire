@@ -33,7 +33,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <ProjectGuid>{1041139F-5E4F-45FE-B0CE-F67BCD16D1DE}</ProjectGuid>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <TargetFrameworkProfile />
     <LangVersion>7</LangVersion>
   </PropertyGroup>
@@ -54,16 +54,19 @@
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Management" />
-    <Reference Include="System.Management.Automation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\..\Windows\WinSxS\msil_system.management.automation_31bf3856ad364e35_1.0.0.0_none_6340379543bd8a03\System.Management.Automation.dll</HintPath>
-    </Reference>
+  
+    <Reference Include="System.Security.Cryptography" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
   </ItemGroup>
+  <ItemGroup>
+  <Reference Include="System.Management.Automation">
+    <HintPath>/home/futureleader/.local/share/empire/empire-compiler/EmpireCompiler-linux-x64-v0.3.3/EmpireCompiler/Data/AssemblyReferences/net40/System.Management.Automation.dll</HintPath>
+  </Reference>
+</ItemGroup>
   <ItemGroup>
     <Compile Include="..\Properties\AssemblyInfo.cs">
       <Link>Properties\AssemblyInfo.cs</Link>
@@ -72,6 +75,7 @@
     <Compile Include="Empire.Agent.cs" />
     <Compile Include="Empire.Agent.Jobs.cs" />
     <Compile Include="Empire.Agent.Stager.cs" />
+    <Compile Include="Empire.Agent.ChaCha20Poly1305.cs" />
     <Compile Include="Misc.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>

