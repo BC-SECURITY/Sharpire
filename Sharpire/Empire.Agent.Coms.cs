@@ -154,7 +154,10 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             byte[] chacha_data = new byte[16];
             byte[] poly1305_tag = new byte[16];
             byte[] chacha_nonce = NewInitializationVector(nonce_length);
-            ChaCha20Poly1305.Encrypt(sessionInfo.GetStagingKeyBytes(), chacha_nonce, data, out chacha_data, out poly1305_tag);
+
+            // Use session key if available (after staging), otherwise use staging key
+            byte[] encryptionKey = sessionInfo.GetSessionKeyBytes() ?? sessionInfo.GetStagingKeyBytes();
+            ChaCha20Poly1305.Encrypt(encryptionKey, chacha_nonce, data, out chacha_data, out poly1305_tag);
 
             //combine the nonce + chacha20 encrypted data + poly1305 tag + encryptedBytes (if applicable) into the routingPacketData bytearray
             byte[] routingPacketData = Misc.combine(chacha_nonce, chacha_data);
@@ -232,7 +235,16 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                 byte[] chachaData = routingChachaData.Take(16).ToArray();
                 byte[] poly1305Tag = routingChachaData.Skip(16).Take(16).ToArray();
                 byte[] routingData = new byte[16];
-                ChaCha20Poly1305.Decrypt(sessionInfo.GetStagingKeyBytes(), chachaNonce, chachaData, poly1305Tag, out routingData);
+
+                // Use session key if available (after staging), otherwise use staging key
+                byte[] decryptionKey = sessionInfo.GetSessionKeyBytes() ?? sessionInfo.GetStagingKeyBytes();
+                bool decryptSuccess = ChaCha20Poly1305.Decrypt(decryptionKey, chachaNonce, chachaData, poly1305Tag, out routingData);
+
+                if (!decryptSuccess || routingData == null)
+                {
+                    Console.WriteLine($"[ERROR] DecodeRoutingPacket() - Decryption failed or routingData is null");
+                    return; // Skip this packet if decryption failed
+                }
 
                 // parse/handle the decrypted routingpacket
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
