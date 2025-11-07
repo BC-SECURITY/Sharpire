@@ -163,14 +163,30 @@ namespace Sharpire
 
         public static BigInteger[] scalarmult(BigInteger[] P, BigInteger e)
         {
+            // Converted from recursive to iterative to prevent stack overflow
             if (e == 0) return ident;
-            BigInteger half = BigInteger.Divide(e, 2);
-            BigInteger[] Q = scalarmult(P, half);
-            Q = edwards_double(Q);
-            if ((e & 1) != 0)
+
+            // Build a list of bits from e (most significant to least significant)
+            List<bool> bits = new List<bool>();
+            BigInteger temp = e;
+            while (temp > 0)
             {
-                Q = edwards_add(Q, P);
+                bits.Add((temp & 1) != 0);
+                temp = BigInteger.Divide(temp, 2);
             }
+            bits.Reverse(); // Now bits[0] is most significant
+
+            // Start with identity and process bits left-to-right
+            BigInteger[] Q = ident;
+            foreach (bool bit in bits)
+            {
+                Q = edwards_double(Q);
+                if (bit)
+                {
+                    Q = edwards_add(Q, P);
+                }
+            }
+
             return Q;
         }
 
