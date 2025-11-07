@@ -54,7 +54,6 @@
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Management" />
-  
     <Reference Include="System.Security.Cryptography" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
@@ -63,14 +62,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-  <Reference Include="System.Management.Automation">
-    <HintPath>/home/futureleader/.local/share/empire/empire-compiler/EmpireCompiler-linux-x64-v0.3.3/EmpireCompiler/Data/AssemblyReferences/net40/System.Management.Automation.dll</HintPath>
-  </Reference>
-</ItemGroup>
+    <Reference Include="System.Management.Automation">
+      <HintPath>/home/futureleader/.local/share/empire/empire-compiler/EmpireCompiler-linux-x64-v0.3.3/EmpireCompiler/Data/AssemblyReferences/net40/System.Management.Automation.dll</HintPath>
+    </Reference>
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Properties\AssemblyInfo.cs">
       <Link>Properties\AssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="Empire.Agent.Cert.cs" />
     <Compile Include="Empire.Agent.Coms.cs" />
     <Compile Include="Empire.Agent.cs" />
     <Compile Include="Empire.Agent.Jobs.cs" />

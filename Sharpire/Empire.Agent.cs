@@ -314,110 +314,107 @@ namespace Sharpire
         private static string Route(string arguments)
         {
             Dictionary<uint, string> adapters = new Dictionary<uint, string>();
-            using (ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2"))
+            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
+            scope.Connect();
+            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
+            using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
             {
-                scope.Connect();
-                ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
-                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
+                using (ManagementObjectCollection objectCollection = objectSearcher.Get())
                 {
-                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
+                    foreach (ManagementObject managementObject in objectCollection)
                     {
-                        foreach (ManagementObject managementObject in objectCollection)
+                        using (managementObject)
                         {
-                            using (managementObject)
-                            {
-                                adapters[(uint)managementObject["InterfaceIndex"]] = ManagementObjectToString((string[])managementObject["IPAddress"]);
-                            }
+                            adapters[(uint)managementObject["InterfaceIndex"]] = ManagementObjectToString((string[])managementObject["IPAddress"]);
                         }
                     }
                 }
-
-                List<string> lines = new List<string>();
-                ObjectQuery query2 = new ObjectQuery("SELECT * FROM Win32_IP4RouteTable ");
-                using (ManagementObjectSearcher objectSearcher2 = new ManagementObjectSearcher(scope, query2))
-                {
-                    using (ManagementObjectCollection objectCollection2 = objectSearcher2.Get())
-                    {
-                        foreach (ManagementObject managementObject in objectCollection2)
-                        {
-                            using (managementObject)
-                            {
-                                string destination = "";
-                                if (managementObject["Destination"] != null)
-                                {
-                                    destination = (string)managementObject["Destination"];
-                                }
-
-                                string netmask = "";
-                                if (managementObject["Mask"] != null)
-                                {
-                                    netmask = (string)managementObject["Mask"];
-                                }
-
-                                string nextHop = "0.0.0.0";
-                                if ((string)managementObject["NextHop"] != "0.0.0.0")
-                                {
-                                    nextHop = (string)managementObject["NextHop"];
-                                }
-
-                                int index = (int)managementObject["InterfaceIndex"];
-
-                                string adapter = "";
-                                if (!adapters.TryGetValue((uint)index, out adapter))
-                                {
-                                    adapter = "127.0.0.1";
-                                }
-
-                                string metric = Convert.ToString((int)managementObject["Metric1"]);
-
-                                lines.Add(
-                                    string.Format("{0,-17} : {1,-50}\n", "Destination", destination) +
-                                    string.Format("{0,-17} : {1,-50}\n", "Netmask", netmask) +
-                                    string.Format("{0,-17} : {1,-50}\n", "NextHop", nextHop) +
-                                    string.Format("{0,-17} : {1,-50}\n", "Interface", adapter) +
-                                    string.Format("{0,-17} : {1,-50}\n", "Metric", metric)
-                                );
-                            }
-                        }
-                    }
-                }
-                return string.Join("\n", lines.ToArray());
             }
+
+            List<string> lines = new List<string>();
+            ObjectQuery query2 = new ObjectQuery("SELECT * FROM Win32_IP4RouteTable ");
+            ManagementObjectSearcher objectSearcher2 = new ManagementObjectSearcher(scope, query2);
+            using (ManagementObjectCollection objectCollection2 = objectSearcher2.Get())
+            {
+                foreach (ManagementObject managementObject in objectCollection2)
+                {
+                    using (managementObject)
+                    {
+                        string destination = "";
+                        if (managementObject["Destination"] != null)
+                        {
+                            destination = (string)managementObject["Destination"];
+                        }
+
+                        string netmask = "";
+                        if (managementObject["Mask"] != null)
+                        {
+                            netmask = (string)managementObject["Mask"];
+                        }
+
+                        string nextHop = "0.0.0.0";
+                        if ((string)managementObject["NextHop"] != "0.0.0.0")
+                        {
+                            nextHop = (string)managementObject["NextHop"];
+                        }
+
+                        int index = (int)managementObject["InterfaceIndex"];
+
+                        string adapter = "";
+                        if (!adapters.TryGetValue((uint)index, out adapter))
+                        {
+                            adapter = "127.0.0.1";
+                        }
+
+                        string metric = Convert.ToString((int)managementObject["Metric1"]);
+
+                        lines.Add(
+                            string.Format("{0,-17} : {1,-50}\n", "Destination", destination) +
+                            string.Format("{0,-17} : {1,-50}\n", "Netmask", netmask) +
+                            string.Format("{0,-17} : {1,-50}\n", "NextHop", nextHop) +
+                            string.Format("{0,-17} : {1,-50}\n", "Interface", adapter) +
+                            string.Format("{0,-17} : {1,-50}\n", "Metric", metric)
+                        );
+                    }
+                }
+            }
+            
+            return string.Join("\n", lines.ToArray());
+
         }
         
         private static string Tasklist(string arguments)
         {
             Dictionary<int, string> owners = new Dictionary<int, string>();
-            using (ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2"))
+            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
+            scope.Connect();
+            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_Process");
+            using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
             {
-                scope.Connect();
-                ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_Process");
-                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
+                using (ManagementObjectCollection objectCollection = objectSearcher.Get())
                 {
-                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
+                    foreach (ManagementObject managementObject in objectCollection)
                     {
-                        foreach (ManagementObject managementObject in objectCollection)
+                        using (managementObject)
                         {
-                            using (managementObject)
+                            string name = "";
+                            string[] owner = new string[2];
+                            managementObject.InvokeMethod("GetOwner", owner);
+                            if (owner[0] != null)
                             {
-                                string name = "";
-                                string[] owner = new string[2];
-                                managementObject.InvokeMethod("GetOwner", owner);
-                                if (owner[0] != null)
-                                {
-                                    name = owner[1] + "\\" + owner[0];
-                                }
-                                else
-                                {
-                                    name = "N/A";
-                                }
-                                managementObject.InvokeMethod("GetOwner", owner);
-                                owners[Convert.ToInt32(managementObject["Handle"])] = name;
+                                name = owner[1] + "\\" + owner[0];
                             }
+                            else
+                            {
+                                name = "N/A";
+                            }
+                            managementObject.InvokeMethod("GetOwner", owner);
+                            owners[Convert.ToInt32(managementObject["Handle"])] = name;
                         }
                     }
                 }
             }
+            
 
             List<string[]> lines = new List<string[]>();
             System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcesses();
@@ -506,37 +503,36 @@ namespace Sharpire
         
         private static string Ifconfig()
         {
-            using (ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2"))
+            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
+            
+            scope.Connect();
+            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
+            using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
             {
-                scope.Connect();
-                ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
-                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
+                using (ManagementObjectCollection objectCollection = objectSearcher.Get())
                 {
-                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
+                    List<string> lines = new List<string>();
+                    foreach (ManagementObject managementObject in objectCollection)
                     {
-                        List<string> lines = new List<string>();
-                        foreach (ManagementObject managementObject in objectCollection)
+                        using (managementObject)
                         {
-                            using (managementObject)
+                            if ((bool)managementObject["IPEnabled"] == true)
                             {
-                                if ((bool)managementObject["IPEnabled"] == true)
-                                {
-                                    lines.Add(
-                                        string.Format("{0,-17} : {1,-50}\n", "Description", managementObject["Description"]) +
-                                        string.Format("{0,-17} : {1,-50}\n", "MACAddress", managementObject["MACAddress"]) +
-                                        string.Format("{0,-17} : {1,-50}\n", "DHCPEnabled", managementObject["DHCPEnabled"]) +
-                                        string.Format("{0,-17} : {1,-50}\n", "IPAddress", ManagementObjectToString((string[])managementObject["IPAddress"])) +
-                                        string.Format("{0,-17} : {1,-50}\n", "IPSubnet", ManagementObjectToString((string[])managementObject["IPSubnet"])) +
-                                        string.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", ManagementObjectToString((string[])managementObject["DefaultIPGateway"])) +
-                                        string.Format("{0,-17} : {1,-50}\n", "DNSServer", ManagementObjectToString((string[])managementObject["DNSServerSearchOrder"])) +
-                                        string.Format("{0,-17} : {1,-50}\n", "DNSHostName", managementObject["DNSHostName"]) +
-                                        string.Format("{0,-17} : {1,-50}\n", "DNSSuffix", ManagementObjectToString((string[])managementObject["DNSDomainSuffixSearchOrder"]))
-                                    );
-                                }
+                                lines.Add(
+                                    string.Format("{0,-17} : {1,-50}\n", "Description", managementObject["Description"]) +
+                                    string.Format("{0,-17} : {1,-50}\n", "MACAddress", managementObject["MACAddress"]) +
+                                    string.Format("{0,-17} : {1,-50}\n", "DHCPEnabled", managementObject["DHCPEnabled"]) +
+                                    string.Format("{0,-17} : {1,-50}\n", "IPAddress", ManagementObjectToString((string[])managementObject["IPAddress"])) +
+                                    string.Format("{0,-17} : {1,-50}\n", "IPSubnet", ManagementObjectToString((string[])managementObject["IPSubnet"])) +
+                                    string.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", ManagementObjectToString((string[])managementObject["DefaultIPGateway"])) +
+                                    string.Format("{0,-17} : {1,-50}\n", "DNSServer", ManagementObjectToString((string[])managementObject["DNSServerSearchOrder"])) +
+                                    string.Format("{0,-17} : {1,-50}\n", "DNSHostName", managementObject["DNSHostName"]) +
+                                    string.Format("{0,-17} : {1,-50}\n", "DNSSuffix", ManagementObjectToString((string[])managementObject["DNSDomainSuffixSearchOrder"]))
+                                );
                             }
                         }
-                        return string.Join("\n", lines.ToArray());
                     }
+                    return string.Join("\n", lines.ToArray());
                 }
             }
         }
