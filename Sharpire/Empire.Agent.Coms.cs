@@ -225,7 +225,7 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                 //parse out the routingPacket to the chachaNonce and routingChaChaData (Chacha20 encrypted + Poly1305 tag)
                 byte[] routingPacket = packetData.Skip(offset).Take(chacha_header_length).ToArray();
                 byte[] chachaNonce = routingPacket.Take(nonce_length).ToArray();
-                byte[] routingChachaData = packetData.Skip(nonce_length).Take(32).ToArray();
+                byte[] routingChachaData = routingPacket.Skip(nonce_length).Take(32).ToArray();
                 offset += chacha_header_length; // advance the offset past the chacha20poly1305 routing packet data (to AESc)
 
                 // decrypt and verify chacha20poly1305 data into output routingData (output decrypted routingpacket)
@@ -238,12 +238,12 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
                 try
                 {
-                    byte language = routingPacket[8];
-                    byte metaData = routingPacket[9];
+                    byte language = routingData[8];
+                    byte metaData = routingData[9];
                 }
                 catch (IndexOutOfRangeException) { }
 
-                byte[] extra = routingPacket.Skip(10).Take(2).ToArray();
+                byte[] extra = routingData.Skip(10).Take(2).ToArray();
                 uint packetLength = BitConverter.ToUInt32(routingData, 12);
 
                 if (sessionInfo.GetAgentId() == packetSessionId)
