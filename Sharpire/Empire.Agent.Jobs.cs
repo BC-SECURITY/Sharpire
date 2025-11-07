@@ -154,45 +154,49 @@ namespace Sharpire
                         psInstance.Runspace = runspace;
                         psInstance.AddScript(command);
 
-                        PSDataCollection<PSObject> outputCollection = new PSDataCollection<PSObject>();
-                        outputCollection.DataAdded += (sender, e) =>
+                        using (PSDataCollection<PSObject> outputCollection = new PSDataCollection<PSObject>())
                         {
-                            lock (syncLock)
+                            EventHandler<DataAddedEventArgs> handler = (sender, e) =>
                             {
-                                while (outputCollection.Count > 0)
+                                lock (syncLock)
                                 {
-                                    PSObject data = outputCollection[0];
-                                    if (data != null)
+                                    while (outputCollection.Count > 0)
                                     {
-                                        outputQueue.Enqueue(data.ToString());
+                                        PSObject data = outputCollection[0];
+                                        if (data != null)
+                                        {
+                                            outputQueue.Enqueue(data.ToString());
+                                        }
+                                        outputCollection.RemoveAt(0);
                                     }
-                                    outputCollection.RemoveAt(0);
+                                }
+                            };
+
+                            try
+                            {
+                                outputCollection.DataAdded += handler;
+                                IAsyncResult result = psInstance.BeginInvoke<PSObject, PSObject>(null, outputCollection);
+
+                                while (!result.IsCompleted || outputCollection.Count > 0)
+                                {
+                                    Thread.Sleep(200);
                                 }
                             }
-                        };
-
-                        try
-                        {
-                            IAsyncResult result = psInstance.BeginInvoke<PSObject, PSObject>(null, outputCollection);
-
-                            while (!result.IsCompleted || outputCollection.Count > 0)
+                            catch (Exception error)
                             {
-                                Thread.Sleep(200);
+                                lock (syncLock)
+                                {
+                                    string errorMessage = "[-] Error: " + error.Message;
+                                    outputQueue.Enqueue(errorMessage);
+                                }
                             }
-                        }
-                        catch (Exception error)
-                        {
-                            lock (syncLock)
+                            finally
                             {
-                                string errorMessage = "[-] Error: " + error.Message;
-                                outputQueue.Enqueue(errorMessage);
-                            }
-                        }
-                        finally
-                        {
-                            lock (syncLock)
-                            {
-                                isFinished = true;
+                                outputCollection.DataAdded -= handler;
+                                lock (syncLock)
+                                {
+                                    isFinished = true;
+                                }
                             }
                         }
                     }

