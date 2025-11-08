@@ -285,6 +285,12 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                 //     //Restart everything
                 // }
             }
+            string resultStr = System.Text.Encoding.UTF8.GetString(results);
+            if (resultStr.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase))
+            {
+
+                results = null;
+            }
             return results;
         }
 
