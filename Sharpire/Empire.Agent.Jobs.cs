@@ -94,7 +94,7 @@ namespace Sharpire
                     jobsId.Add(taskIdString, taskId);
             }
 
-            jobs[taskIdString].StartAssembly(packet.data); // new method on Job
+            jobs[taskIdString].StartAssembly(packet.data);
         }
 
         internal void StartAgentJob(string command, ushort taskId)

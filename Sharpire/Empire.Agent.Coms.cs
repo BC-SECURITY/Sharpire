@@ -413,7 +413,7 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task120(packet);
                     case 122:
-	                    jobTracking.StartAssemblyJob(packet, packet.taskId);   // new
+	                    jobTracking.StartAssemblyJob(packet, packet.taskId);
 	                    jobTracking.jobs[taskId.ToString()].Status = "running";
 	                    return EncodePacket(packet.type, $"Job started: {taskId}", packet.taskId);
                     default:
