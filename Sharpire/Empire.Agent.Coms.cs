@@ -57,7 +57,7 @@ AESc = AES encrypted using the client's session key
     +--------+-----------------+-------+
     | AES IV | Enc Packet Data | HMACc |
     +--------+-----------------+-------+
-    |   16   |   % 16 bytes    |  10   |
+    |   16   |   % 16 bytes    |  16   |
     +--------+-----------------+-------+
 
     Client data decrypted:
