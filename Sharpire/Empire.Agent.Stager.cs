@@ -59,8 +59,8 @@ namespace Sharpire
             byte[] rawSharedSecretBytes = sharedSecret.ToByteArray();
             Array.Reverse(rawSharedSecretBytes);
 
-            // Always normalize to 6147 bytes
-            int expectedLength = 6147;
+            // Normalize to 768 bytes (6144-bit DH prime / 8)
+            int expectedLength = 768;
             if (rawSharedSecretBytes.Length < expectedLength)
             {
                 byte[] padded = new byte[expectedLength];
@@ -77,10 +77,41 @@ namespace Sharpire
             }
 
 
-            using (SHA256 sha256 = SHA256.Create())
+            AesKey = HkdfSha256(
+                rawSharedSecretBytes,
+                null,
+                System.Text.Encoding.ASCII.GetBytes("empire-session-key"),
+                32
+            );
+        }
+
+        // Single-block HKDF-SHA256 (supports output up to 32 bytes only)
+        private static byte[] HkdfSha256(byte[] ikm, byte[] salt, byte[] info, int length)
+        {
+            if (length > 32)
+                throw new ArgumentOutOfRangeException(nameof(length), "Single-block HKDF supports up to 32 bytes.");
+
+            // Extract: PRK = HMAC-SHA256(salt, IKM)
+            if (salt == null) salt = new byte[32];
+            byte[] prk;
+            using (var hmac = new HMACSHA256(salt)) { prk = hmac.ComputeHash(ikm); }
+
+            // Expand: T(1) = HMAC-SHA256(PRK, info || 0x01)
+            byte[] input = new byte[info.Length + 1];
+            Array.Copy(info, 0, input, 0, info.Length);
+            input[input.Length - 1] = 0x01;
+            byte[] result;
+            using (var hmac = new HMACSHA256(prk)) { result = hmac.ComputeHash(input); }
+            Array.Clear(prk, 0, prk.Length);
+
+            if (length < 32)
             {
-                AesKey = sha256.ComputeHash(rawSharedSecretBytes);
+                byte[] truncated = new byte[length];
+                Array.Copy(result, truncated, length);
+                Array.Clear(result, 0, result.Length);
+                return truncated;
             }
+            return result;
         }
 
         private static BigInteger GenerateRandomBigInteger()
@@ -590,7 +621,7 @@ namespace Sharpire
 
             using (HMACSHA256 hmac = new HMACSHA256(key))
             {
-                byte[] hmacHash = hmac.ComputeHash(encrypted).Take(10).ToArray();
+                byte[] hmacHash = hmac.ComputeHash(encrypted).Take(16).ToArray();
                 return Misc.combine(encrypted, hmacHash);
             }
         }
@@ -610,15 +641,27 @@ namespace Sharpire
             return encryptedBytes;
         }
 
+        private static bool ConstantTimeEquals(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length) return false;
+            int diff = 0;
+            for (int i = 0; i < a.Length; i++)
+                diff |= a[i] ^ b[i];
+            return diff == 0;
+        }
+
         public static byte[] AesDecryptAndVerify(byte[] key, byte[] data)
         {
-            byte[] hmacReceived = data.Skip(data.Length - 10).Take(10).ToArray();
-            byte[] encrypted = data.Take(data.Length - 10).ToArray();
+            if (data == null || data.Length < 48)
+                throw new CryptographicException("Encrypted data too short.");
+
+            byte[] hmacReceived = data.Skip(data.Length - 16).Take(16).ToArray();
+            byte[] encrypted = data.Take(data.Length - 16).ToArray();
 
             using (HMACSHA256 hmac = new HMACSHA256(key))
             {
-                byte[] hmacComputed = hmac.ComputeHash(encrypted).Take(10).ToArray();
-                if (!hmacComputed.SequenceEqual(hmacReceived))
+                byte[] hmacComputed = hmac.ComputeHash(encrypted).Take(16).ToArray();
+                if (!ConstantTimeEquals(hmacComputed, hmacReceived))
                 {
                     throw new CryptographicException("HMAC verification failed.");
                 }
