@@ -54,13 +54,15 @@
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Management" />
-  
+
     <Reference Include="System.Security.Cryptography" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
   <ItemGroup>
   <Reference Include="System.Management.Automation">
@@ -76,6 +78,8 @@
     <Compile Include="Empire.Agent.Jobs.cs" />
     <Compile Include="Empire.Agent.Stager.cs" />
     <Compile Include="Empire.Agent.AesGcm.cs" />
+    <Compile Include="Empire.Agent.MalleableProfile.cs" />
+    <Compile Include="Empire.Agent.MalleableTransform.cs" />
     <Compile Include="Misc.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>

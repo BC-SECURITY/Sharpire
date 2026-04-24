@@ -343,6 +343,17 @@ namespace Sharpire
             TaskURIs = profile.Split('|').First().Split(',');
             UserAgent = profile.Split('|').Last();
         }
+
+        private MalleableProfile malleableProfile;
+
+        public void SetMalleableProfile(string b64Json)
+        {
+            if (string.IsNullOrEmpty(b64Json) || string.IsNullOrWhiteSpace(b64Json)) return;
+            try { this.malleableProfile = MalleableProfile.Parse(b64Json); }
+            catch { this.malleableProfile = null; }
+        }
+
+        public MalleableProfile GetMalleableProfile() { return this.malleableProfile; }
         
         public void SetKillDate(string killDate)
         {

