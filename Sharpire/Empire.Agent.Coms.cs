@@ -340,11 +340,15 @@ AESc = AES encrypted using the client's session key
         // section is malformed, signaling the caller to use the hardcoded
         // behavior.
         //
-        // The routing packet is the complete wire payload for both GET and
-        // POST — it already embeds the encrypted client packet bytes in its
-        // trailing slot. It is placed through client.metadata only; the
-        // server's two-part extractor reads 0 bytes from client.output's
-        // terminator (matching Gopire's sendMalleable).
+        // The routing packet is the complete wire payload. Which container
+        // carries it mirrors the PS/Python reference agents emitted by
+        // http_malleable.py::generate_comms:
+        //   - GET  → client.metadata (the only container GET has)
+        //   - POST → client.output   (Empire convention — id is a server-side
+        //            extract hint only; reference agents ignore it)
+        // The server's two-part extractor concatenates id+output, so placing
+        // everything on output for POST yields b"" + routing_packet on the
+        // wire and keeps AEAD decryption intact.
         private bool TryMalleableRequest(byte[] routingPacket, bool isPost, out byte[] responseBytes)
         {
             responseBytes = null;
@@ -355,7 +359,8 @@ AESc = AES encrypted using the client's session key
             Section section;
             if (!mp.Sections.TryGetValue(sectionName, out section) || section == null) return false;
             if (section.Client == null || section.Client.Uris == null || section.Client.Uris.Length == 0) return false;
-            if (section.Client.Metadata == null) return false;
+            Container packetContainer = isPost ? section.Client.Output : section.Client.Metadata;
+            if (packetContainer == null) return false;
 
             try
             {
@@ -385,17 +390,14 @@ AESc = AES encrypted using the client's session key
                 // Seed the body from the static profile body (base64-encoded).
                 byte[] staticBody = DecodeBase64Loose(section.Client.Body);
 
-                // We have to construct the request after URI rewrites, so stash
-                // pending terminator placements and commit them below. The
-                // routing packet is the complete wire payload; client.Output
-                // carries no separate bytes here (Gopire parity — the server's
-                // two-part extractor reads 0 bytes from Output's terminator).
-                byte[] metadataBytes = MalleableTransform.Apply(section.Client.Metadata.Transforms, routingPacket ?? new byte[0]);
+                // Apply the chosen container's transforms to the routing
+                // packet; the terminator then picks where the bytes go.
+                byte[] packetBytes = MalleableTransform.Apply(packetContainer.Transforms, routingPacket ?? new byte[0]);
 
                 // URI-mutating terminators need to run before we create the
                 // HttpWebRequest (immutable URL once constructed). We apply
                 // them in-place, falling through to body/header placement after.
-                ApplyUriTerminator(section.Client.Metadata.Terminator, metadataBytes, ref requestUri);
+                ApplyUriTerminator(packetContainer.Terminator, packetBytes, ref requestUri);
 
                 HttpWebRequest req = (HttpWebRequest)WebRequest.Create(requestUri);
                 req.Method = string.IsNullOrEmpty(section.Client.Verb) ? (isPost ? "POST" : "GET") : section.Client.Verb;
@@ -416,7 +418,7 @@ AESc = AES encrypted using the client's session key
                 // will append to it by writing combined bytes.
                 byte[] bodyAccumulator = staticBody ?? new byte[0];
 
-                bodyAccumulator = PlaceNonUriTerminator(req, section.Client.Metadata.Terminator, metadataBytes, bodyAccumulator);
+                bodyAccumulator = PlaceNonUriTerminator(req, packetContainer.Terminator, packetBytes, bodyAccumulator);
 
                 // Commit the body once — if any PRINT terminator fired, we have
                 // accumulated bytes; otherwise bodyAccumulator == staticBody.
