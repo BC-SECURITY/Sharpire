@@ -253,7 +253,10 @@ namespace Sharpire
         }
     }
     
-    sealed class SessionInfo
+    // Partial so the optional SharpireMalleable source library can extend it
+    // with malleable-profile storage without the base build referencing any
+    // malleable types.
+    partial class SessionInfo
     {
         private string[] ControlServers;
         private readonly string StagingKey;
@@ -344,17 +347,6 @@ namespace Sharpire
             UserAgent = profile.Split('|').Last();
         }
 
-        private MalleableProfile malleableProfile;
-
-        public void SetMalleableProfile(string b64Json)
-        {
-            if (string.IsNullOrEmpty(b64Json) || string.IsNullOrWhiteSpace(b64Json)) return;
-            try { this.malleableProfile = MalleableProfile.Parse(b64Json); }
-            catch { this.malleableProfile = null; }
-        }
-
-        public MalleableProfile GetMalleableProfile() { return this.malleableProfile; }
-        
         public void SetKillDate(string killDate)
         {
             Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
