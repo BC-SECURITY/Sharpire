@@ -258,7 +258,7 @@ AESc = AES encrypted using the client's session key
             byte[] routingPacket = NewRoutingPacket(null, 4);
 
             byte[] malleableResult;
-            bool malleableUsed = TryMalleableRequest(routingPacket, null, false, out malleableResult);
+            bool malleableUsed = TryMalleableRequest(routingPacket, false, out malleableResult);
             if (malleableUsed)
             {
                 if (malleableResult == null) return null;
@@ -308,7 +308,7 @@ AESc = AES encrypted using the client's session key
             byte[] routingPacket = NewRoutingPacket(encryptedBytes, 5);
 
             byte[] unused;
-            if (TryMalleableRequest(routingPacket, encryptedBytes, true, out unused))
+            if (TryMalleableRequest(routingPacket, true, out unused))
             {
                 return;
             }
@@ -340,11 +340,12 @@ AESc = AES encrypted using the client's session key
         // section is malformed, signaling the caller to use the hardcoded
         // behavior.
         //
-        // For POST, `outputPayload` is the encrypted client packet bytes that
-        // should be placed through the client.output container, while
-        // `routingPacket` goes through client.metadata. For GET, only the
-        // routing packet is sent.
-        private bool TryMalleableRequest(byte[] routingPacket, byte[] outputPayload, bool isPost, out byte[] responseBytes)
+        // The routing packet is the complete wire payload for both GET and
+        // POST — it already embeds the encrypted client packet bytes in its
+        // trailing slot. It is placed through client.metadata only; the
+        // server's two-part extractor reads 0 bytes from client.output's
+        // terminator (matching Gopire's sendMalleable).
+        private bool TryMalleableRequest(byte[] routingPacket, bool isPost, out byte[] responseBytes)
         {
             responseBytes = null;
             MalleableProfile mp = sessionInfo.GetMalleableProfile();
@@ -385,23 +386,16 @@ AESc = AES encrypted using the client's session key
                 byte[] staticBody = DecodeBase64Loose(section.Client.Body);
 
                 // We have to construct the request after URI rewrites, so stash
-                // pending terminator placements and commit them below.
+                // pending terminator placements and commit them below. The
+                // routing packet is the complete wire payload; client.Output
+                // carries no separate bytes here (Gopire parity — the server's
+                // two-part extractor reads 0 bytes from Output's terminator).
                 byte[] metadataBytes = MalleableTransform.Apply(section.Client.Metadata.Transforms, routingPacket ?? new byte[0]);
-                byte[] outputBytes = null;
-                if (isPost && section.Client.Output != null)
-                {
-                    byte[] payload = outputPayload ?? new byte[0];
-                    outputBytes = MalleableTransform.Apply(section.Client.Output.Transforms, payload);
-                }
 
                 // URI-mutating terminators need to run before we create the
                 // HttpWebRequest (immutable URL once constructed). We apply
                 // them in-place, falling through to body/header placement after.
                 ApplyUriTerminator(section.Client.Metadata.Terminator, metadataBytes, ref requestUri);
-                if (outputBytes != null)
-                {
-                    ApplyUriTerminator(section.Client.Output.Terminator, outputBytes, ref requestUri);
-                }
 
                 HttpWebRequest req = (HttpWebRequest)WebRequest.Create(requestUri);
                 req.Method = string.IsNullOrEmpty(section.Client.Verb) ? (isPost ? "POST" : "GET") : section.Client.Verb;
@@ -418,15 +412,11 @@ AESc = AES encrypted using the client's session key
                     }
                 }
 
-                // Body starts as the static body_prefix; PRINT terminators below
+                // Body starts as the static client body; a PRINT terminator
                 // will append to it by writing combined bytes.
                 byte[] bodyAccumulator = staticBody ?? new byte[0];
 
                 bodyAccumulator = PlaceNonUriTerminator(req, section.Client.Metadata.Terminator, metadataBytes, bodyAccumulator);
-                if (outputBytes != null)
-                {
-                    bodyAccumulator = PlaceNonUriTerminator(req, section.Client.Output.Terminator, outputBytes, bodyAccumulator);
-                }
 
                 // Commit the body once — if any PRINT terminator fired, we have
                 // accumulated bytes; otherwise bodyAccumulator == staticBody.
@@ -444,19 +434,10 @@ AESc = AES encrypted using the client's session key
                     if (section.Server != null && section.Server.Output != null)
                     {
                         byte[] extracted = MalleableTransform.ExtractTerminator(resp, section.Server.Output.Terminator, section.Client.Uris);
-                        // Strip the server's body_prefix if present — the server
-                        // prepends it before the transformed payload.
-                        byte[] prefix = DecodeBase64Loose(section.Server.BodyPrefix);
-                        if (section.Server.Output.Terminator != null &&
-                            (section.Server.Output.Terminator.Type == null ||
-                             string.Equals(section.Server.Output.Terminator.Type, "print", StringComparison.OrdinalIgnoreCase) ||
-                             section.Server.Output.Terminator.Type == "") &&
-                            prefix.Length > 0 && extracted.Length >= prefix.Length)
-                        {
-                            byte[] trimmed = new byte[extracted.Length - prefix.Length];
-                            Buffer.BlockCopy(extracted, prefix.Length, trimmed, 0, trimmed.Length);
-                            extracted = trimmed;
-                        }
+                        // NOTE: section.Server.BodyPrefix is intentionally not
+                        // honored here — the Python reference (Post.construct_server,
+                        // transaction.py::Response.store) does not prepend it, so
+                        // stripping it would diverge from the reference.
                         responseBytes = MalleableTransform.Reverse(section.Server.Output.Transforms, extracted);
                     }
                     else
