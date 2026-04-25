@@ -253,7 +253,10 @@ namespace Sharpire
         }
     }
     
-    sealed class SessionInfo
+    // Partial so the optional SharpireMalleable source library can extend it
+    // with malleable-profile storage without the base build referencing any
+    // malleable types.
+    partial class SessionInfo
     {
         private string[] ControlServers;
         private readonly string StagingKey;
@@ -343,7 +346,7 @@ namespace Sharpire
             TaskURIs = profile.Split('|').First().Split(',');
             UserAgent = profile.Split('|').Last();
         }
-        
+
         public void SetKillDate(string killDate)
         {
             Regex regex = new Regex("^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$");
