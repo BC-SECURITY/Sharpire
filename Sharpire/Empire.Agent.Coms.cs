@@ -364,7 +364,7 @@ AESc = AES encrypted using the client's session key
             // each inner frame is a 12-byte header plus payload.
             const int HEADER_SIZE = 12;
             int offset = 0;
-            byte[] resultPackets = Array.Empty<byte>();
+            byte[] resultPackets = new byte[0];
             while (offset < taskingBytes.Length)
             {
                 if (taskingBytes.Length - offset < HEADER_SIZE)
