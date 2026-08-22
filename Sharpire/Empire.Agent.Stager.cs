@@ -334,8 +334,12 @@ namespace Sharpire
             byte[] publicKeyBytes = dh.PublicKeyBytes;
             var publicKeyBytesBE = Cert.ToBigEndianFixedFromLE(publicKeyBytes, 768);
             
-            byte[] msg = System.Text.Encoding.ASCII.GetBytes("SIGNATURE");
-            var agent_cert = Cert.signature_unsafe(msg, sessionInfo.GetPrivateKeyBytes(), sessionInfo.GetPublicKeyBytes());
+            // Sign the STAGE1 transcript (label || our DH public key), not a
+            // constant, so this signature cannot be replayed with a substituted
+            // DH public key.
+            byte[] agentLabel = Encoding.ASCII.GetBytes("empire-stage1-agent");
+            byte[] agentTranscript = Misc.combine(agentLabel, publicKeyBytesBE);
+            var agent_cert = Cert.signature_unsafe(agentTranscript, sessionInfo.GetPrivateKeyBytes(), sessionInfo.GetPublicKeyBytes());
 
             byte[] stage1Msg = new byte[publicKeyBytesBE.Length + agent_cert.Length];
             Array.Copy(publicKeyBytesBE, 0, stage1Msg, 0, publicKeyBytesBE.Length);
@@ -351,13 +355,33 @@ namespace Sharpire
             RoutingPacket packet = DecodeRoutingPacket(response);
             sessionInfo.SetAgentId(packet.SessionId);
 
+            // Server reply: nonce(16) || server_pub(768, big-endian) || server_cert(64)
             byte[] decryptedData = AesDecryptAndVerify(stagingKeyBytes, packet.EncryptedData);
             byte[] nonce = decryptedData.Take(16).ToArray();
-            byte[] serverPubKey = decryptedData.Skip(16).ToArray();
+            byte[] serverPub = decryptedData.Skip(16).Take(768).ToArray();
+            byte[] serverCert = decryptedData.Skip(784).Take(64).ToArray();
 
-            string serverPubKeyAscii = Utf8StringToHex(Encoding.UTF8.GetString(serverPubKey));
+            // Authenticate the server: it must have signed
+            //   label || session id || nonce || server_pub
+            // with the key baked into this stager. Abort if it did not.
+            byte[] serverLabel = Encoding.ASCII.GetBytes("empire-stage1-server");
+            byte[] sidBytes = Encoding.ASCII.GetBytes(packet.SessionId);
+            byte[] serverTranscript = Misc.combine(Misc.combine(Misc.combine(serverLabel, sidBytes), nonce), serverPub);
+            bool serverValid;
+            try
+            {
+                serverValid = Cert.checkvalid(serverCert, serverTranscript, sessionInfo.GetServerPublicKeyBytes());
+            }
+            catch
+            {
+                serverValid = false;
+            }
+            if (!serverValid)
+            {
+                throw new Exception("Invalid server certificate");
+            }
 
-            dh.GenerateSharedSecret(HexStringToByteArray(serverPubKeyAscii));
+            dh.GenerateSharedSecret(serverPub);
             sessionInfo.SetSessionKeyBytes(dh.AesKey);
 
             return nonce;
@@ -688,13 +712,38 @@ namespace Sharpire
             return output;
         }
 
+        // HKDF-SHA256 (RFC 5869), single 32-byte output block, salt = 32 zero
+        // bytes. Must stay byte-for-byte identical to the server's
+        // HKDF(SHA256, length=32, salt=None, info=info).
+        private static byte[] HkdfSha256Subkey(byte[] ikm, string info)
+        {
+            byte[] salt = new byte[32];
+            byte[] prk;
+            using (HMACSHA256 h = new HMACSHA256(salt)) { prk = h.ComputeHash(ikm); }
+            byte[] infoBytes = Encoding.ASCII.GetBytes(info);
+            byte[] msg = new byte[infoBytes.Length + 1];
+            Array.Copy(infoBytes, 0, msg, 0, infoBytes.Length);
+            msg[infoBytes.Length] = 0x01;
+            using (HMACSHA256 h = new HMACSHA256(prk)) { return h.ComputeHash(msg); }
+        }
+
+        // Independent cipher/MAC subkeys derived from the shared key, so the
+        // same key is never used for both AES and HMAC.
+        private static void DeriveEncMacSubkeys(byte[] key, out byte[] kEnc, out byte[] kMac)
+        {
+            kEnc = HkdfSha256Subkey(key, "empire-enc");
+            kMac = HkdfSha256Subkey(key, "empire-mac");
+        }
+
         public static byte[] AesEncryptThenHmac(byte[] key, byte[] data)
         {
+            byte[] kEnc, kMac;
+            DeriveEncMacSubkeys(key, out kEnc, out kMac);
             byte[] iv = NewInitializationVector(16);
-            byte[] encrypted = aesEncrypt(key, iv, data);
+            byte[] encrypted = aesEncrypt(kEnc, iv, data);
             encrypted = Misc.combine(iv, encrypted);
 
-            using (HMACSHA256 hmac = new HMACSHA256(key))
+            using (HMACSHA256 hmac = new HMACSHA256(kMac))
             {
                 byte[] hmacHash = hmac.ComputeHash(encrypted).Take(16).ToArray();
                 return Misc.combine(encrypted, hmacHash);
@@ -730,10 +779,12 @@ namespace Sharpire
             if (data == null || data.Length < 48)
                 throw new CryptographicException("Encrypted data too short.");
 
+            byte[] kEnc, kMac;
+            DeriveEncMacSubkeys(key, out kEnc, out kMac);
             byte[] hmacReceived = data.Skip(data.Length - 16).Take(16).ToArray();
             byte[] encrypted = data.Take(data.Length - 16).ToArray();
 
-            using (HMACSHA256 hmac = new HMACSHA256(key))
+            using (HMACSHA256 hmac = new HMACSHA256(kMac))
             {
                 byte[] hmacComputed = hmac.ComputeHash(encrypted).Take(16).ToArray();
                 if (!ConstantTimeEquals(hmacComputed, hmacReceived))
@@ -741,7 +792,7 @@ namespace Sharpire
                     throw new CryptographicException("HMAC verification failed.");
                 }
             }
-            return aesDecrypt(key, encrypted);
+            return aesDecrypt(kEnc, encrypted);
         }
 
         ////////////////////////////////////////////////////////////////////////////////
