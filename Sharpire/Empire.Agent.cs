@@ -281,6 +281,7 @@ namespace Sharpire
         private byte[] SessionKeyBytes;
         private byte[] PublicKeyBytes;
         private byte[] PrivateKeyBytes;
+        private byte[] ServerPublicKeyBytes;
 
         public SessionInfo(string[] args)
         {
@@ -317,6 +318,13 @@ namespace Sharpire
         public void SetPrivateKeyBytes(byte[] Skbytes)
         {
             PrivateKeyBytes = Skbytes;
+        }
+
+        public byte[] GetServerPublicKeyBytes() { return ServerPublicKeyBytes; }
+
+        public void SetServerPublicKeyBytes(byte[] serverPkBytes)
+        {
+            ServerPublicKeyBytes = serverPkBytes;
         }
         public void SetDefaultJitter(double defaultJitter)
         {
