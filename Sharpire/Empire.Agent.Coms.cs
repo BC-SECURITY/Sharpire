@@ -582,11 +582,14 @@ AESc = AES encrypted using the client's session key
 
         internal static byte[] NewInitializationVector(int length)
         {
-            Random random = new Random();
+            // Must be a CSPRNG: this value is the AES-GCM nonce for the routing
+            // packet, which is keyed by the listener's static staging key. A
+            // repeated nonce under a fixed GCM key is catastrophic (recoverable
+            // GHASH subkey -> routing packet forgery).
             byte[] initializationVector = new byte[length];
-            for (int i = 0; i < initializationVector.Length; i++)
+            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
             {
-                initializationVector[i] = Convert.ToByte(random.Next(0, 255));
+                rng.GetBytes(initializationVector);
             }
             return initializationVector;
         }
