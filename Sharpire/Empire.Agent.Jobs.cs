@@ -289,11 +289,44 @@ namespace Sharpire
                     if (keyValue.Length == 2)
                     {
                         string value = keyValue[1].Trim().Trim('"');
+                        value = UnescapeJsonString(value);
                         parametersList.Add(value);
                     }
                 }
 
                 return parametersList.ToArray();
+            }
+
+            private static string UnescapeJsonString(string s)
+            {
+                if (string.IsNullOrEmpty(s) || s.IndexOf('\\') < 0)
+                    return s;
+
+                var sb = new System.Text.StringBuilder(s.Length);
+                for (int i = 0; i < s.Length; i++)
+                {
+                    if (s[i] == '\\' && i + 1 < s.Length)
+                    {
+                        char next = s[i + 1];
+                        switch (next)
+                        {
+                            case '\\': sb.Append('\\'); i++; break;
+                            case '"':  sb.Append('"');  i++; break;
+                            case '/':  sb.Append('/');  i++; break;
+                            case 'n':  sb.Append('\n'); i++; break;
+                            case 'r':  sb.Append('\r'); i++; break;
+                            case 't':  sb.Append('\t'); i++; break;
+                            case 'b':  sb.Append('\b'); i++; break;
+                            case 'f':  sb.Append('\f'); i++; break;
+                            default:   sb.Append(s[i]); break;
+                        }
+                    }
+                    else
+                    {
+                        sb.Append(s[i]);
+                    }
+                }
+                return sb.ToString();
             }
             
             private static string EscapeArg(string arg)
