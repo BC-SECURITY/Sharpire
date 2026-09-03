@@ -452,7 +452,7 @@ AESc = AES encrypted using the client's session key
                         if (parts.Length >= 3 && parts[0] == "Set-Delay")
                         {
                             sessionInfo.SetDefaultDelay(UInt32.Parse(parts[1]));
-                            sessionInfo.SetDefaultJitter(UInt32.Parse(parts[2]));
+                            sessionInfo.SetDefaultJitter(Double.Parse(parts[2]));
                             output = "Delay set to " + parts[1] + " Jitter set to " + parts[2];
                         }
                         else
