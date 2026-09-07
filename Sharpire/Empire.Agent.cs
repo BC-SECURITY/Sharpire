@@ -201,6 +201,22 @@ namespace Sharpire
             {
                 command = command.Substring(6);
             }
+
+            // Intercept cd/chdir so directory changes persist across commands.
+            // RunPowerShell creates a new Runspace per call, so Set-Location
+            // inside it is lost immediately.
+            string trimmed = command.TrimStart();
+            if (trimmed.Equals("cd", StringComparison.OrdinalIgnoreCase)
+                || (trimmed.Length > 2
+                    && trimmed.StartsWith("cd", StringComparison.OrdinalIgnoreCase)
+                    && !char.IsLetterOrDigit(trimmed[2])))
+            {
+                string path = trimmed.Length > 2 ? trimmed.Substring(2).Trim().Trim('"', '\'') : "";
+                if (string.IsNullOrEmpty(path))
+                    return Directory.GetCurrentDirectory();
+                return ChangeDirectory(path);
+            }
+
             return RunPowerShell(command);
         }
 
