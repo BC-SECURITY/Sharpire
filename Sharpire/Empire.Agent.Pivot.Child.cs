@@ -74,6 +74,23 @@ namespace Sharpire
         // Sends one frame and returns the batch's kind=0 reply body, or an
         // empty array when the lock times out. Throws on I/O failure after
         // dropping the stream so the next call redials.
+        // Swap the relay backlog out under the connection lock.
+        internal List<byte[]> TakePendingRelays()
+        {
+            List<byte[]> taken = new List<byte[]>();
+            if (!_lock.Wait(LockTimeoutMs)) return taken;
+            try
+            {
+                taken.AddRange(PendingRelays);
+                PendingRelays.Clear();
+            }
+            finally
+            {
+                _lock.Release();
+            }
+            return taken;
+        }
+
         internal byte[] Exchange(byte kind, byte[] hop, byte[] body)
         {
             if (!_lock.Wait(LockTimeoutMs))

