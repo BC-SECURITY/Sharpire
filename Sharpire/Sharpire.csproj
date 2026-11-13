@@ -79,6 +79,7 @@
     <Compile Include="Empire.Agent.Pivot.Frame.cs" />
     <Compile Include="Empire.Agent.Pivot.Child.cs" />
     <Compile Include="Empire.Agent.Pivot.Relay.cs" />
+    <Compile Include="Empire.Agent.Pivot.Parent.cs" />
     <Compile Include="Misc.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>

