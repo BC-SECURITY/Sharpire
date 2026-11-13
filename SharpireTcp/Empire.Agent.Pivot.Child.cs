@@ -247,6 +247,12 @@ namespace Sharpire
             response = PivotConn.For(host, port).Exchange(2, Encoding.UTF8.GetBytes(hop), routingPacket);
         }
 
+        // Pivot stager POSTs carry no URI; the frame header addresses the parent.
+        partial void TryPivotStagerUri(ref string chosen)
+        {
+            if (IsPivotServer()) chosen = "";
+        }
+
         private bool IsPivotServer()
         {
             return sessionInfo.GetControlServers().First().StartsWith("tcp://", StringComparison.OrdinalIgnoreCase);

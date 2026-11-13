@@ -514,8 +514,9 @@ namespace Sharpire
         // otherwise this falls back to the legacy random-task-URI behavior.
         private string PickStagerUri()
         {
-            if (IsPivotServer()) return "";
             string chosen = null;
+            TryPivotStagerUri(ref chosen);
+            if (chosen != null) return chosen;
             TryPickMalleableStagerUri(ref chosen);
             if (chosen != null) return chosen;
 
@@ -529,6 +530,7 @@ namespace Sharpire
         partial void TryPickMalleableStagerUri(ref string chosen);
 
         // tcp:// pivot staging hook, implemented in Empire.Agent.Pivot.Child.cs.
+        partial void TryPivotStagerUri(ref string chosen);
         partial void TryPivotStagerExchange(byte[] routingPacket, ref byte[] response, ref bool handled);
 
         private void DotNetEmpire()

@@ -322,6 +322,12 @@ namespace Sharpire
 
     partial class Coms
     {
+        partial void TryPivotTask(PACKET packet, ref byte[] result)
+        {
+            if (packet.type == 72) result = StartTcpPivot(packet);
+            else if (packet.type == 73) result = StopTcpPivot(packet);
+        }
+
         // payload: "hop|bindAddress|port|allowedSources"
         private byte[] StartTcpPivot(PACKET packet)
         {
