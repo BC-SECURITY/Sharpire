@@ -205,6 +205,8 @@ namespace Sharpire
             {
                 byte[] routingPacket = NewRoutingPacket(null, 4);
                 result = conn.Exchange(0, new byte[0], routingPacket);
+                foreach (byte[] frame in conn.TakePendingRelays())
+                    EnqueueRoutedPackets(frame);
             }
             catch (Exception)
             {
@@ -222,6 +224,8 @@ namespace Sharpire
             try
             {
                 conn.Exchange(1, new byte[0], routingPacket);
+                foreach (byte[] frame in conn.TakePendingRelays())
+                    EnqueueRoutedPackets(frame);
             }
             catch (Exception)
             {
