@@ -262,8 +262,8 @@ namespace Sharpire
             {
                 if (JobThread != null)
                 {
+                    lock (syncLock) { Status = "stopped"; }
                     JobThread.Abort();
-                    Status = "stopped";
                 }
             }
             public void StartAssembly(string packetData)
@@ -404,7 +404,7 @@ namespace Sharpire
                     lock (syncLock)
                     {
                         isFinished = true;
-                        if (Status != "error") Status = "completed";
+                        if (Status == "running") Status = "completed";
                     }
                 }
             }
